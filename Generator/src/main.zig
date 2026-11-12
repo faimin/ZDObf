@@ -239,8 +239,7 @@ fn find_zd_string(source: []const u8, start: usize, language: []const u8) !?usiz
 }
 
 fn is_protected_string(source: []const u8, index: usize) bool {
-    return (std.mem.startsWith(u8, source[index..], "LMString(") or
-        std.mem.startsWith(u8, source[index..], "ZDString(")) and
+    return std.mem.startsWith(u8, source[index..], "ZDString(") and
         (index == 0 or !is_identifier_byte(source[index - 1]));
 }
 
@@ -482,9 +481,9 @@ fn build_decode_expression(allocator: std.mem.Allocator, id: u64, language: []co
     std.mem.writeInt(u64, &id_bytes, id, .little);
     var output: std.ArrayList(u8) = .empty;
     if (std.mem.eql(u8, language, "swift")) {
-        try output.appendSlice(allocator, "LMStringDecodeBytes(["[0..]);
+        try output.appendSlice(allocator, "ZDStringDecodeBytes(["[0..]);
     } else {
-        try output.appendSlice(allocator, "LMStringDecodeBytes((const unsigned char[]){"[0..]);
+        try output.appendSlice(allocator, "ZDStringDecodeBytes((const unsigned char[]){"[0..]);
     }
     for (id_bytes, 0..) |byte, index| {
         if (index != 0) try output.appendSlice(allocator, ", "[0..]);

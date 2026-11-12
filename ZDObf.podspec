@@ -1,5 +1,5 @@
 Pod::Spec.new do |spec|
-  spec.name             = 'ZDStringProtection'
+  spec.name             = 'ZDObf'
   spec.version          = '0.1.0'
   spec.summary          = 'Mach-O embedded encrypted string runtime for iOS.'
   spec.description      = <<-DESC
@@ -16,7 +16,7 @@ Pod::Spec.new do |spec|
   spec.module_name = spec.name
   spec.source_files = 'Apple/**/*.{h,mm,swift}'
   spec.public_header_files = 'Apple/ObjectiveC/*.h'
-  spec.vendored_frameworks = 'dist/ZDStringProtectionRuntime.xcframework'
+  spec.vendored_frameworks = 'dist/ZDObfRuntime.xcframework'
   spec.requires_arc = true
   spec.frameworks = 'Foundation'
   spec.preserve_paths = 'crates/runtime/include/*.h', 'scripts/*.sh', 'Generator/**/*', 'README.md'

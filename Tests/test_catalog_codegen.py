@@ -24,8 +24,8 @@ class CatalogCodegenTests(unittest.TestCase):
         generated = module.render_catalog(mapping)
 
         self.assertEqual(len(mapping), 10)
-        self.assertIn("LMStringDecodeBytes", generated["objc"])
-        self.assertIn("LMStringDecodeBytes", generated["swift"])
+        self.assertIn("ZDStringDecodeBytes", generated["objc"])
+        self.assertIn("ZDStringDecodeBytes", generated["swift"])
         self.assertNotIn("ZDStringID", generated["objc"])
         self.assertNotIn("ZDStringID", generated["swift"])
         for value in mapping.values():

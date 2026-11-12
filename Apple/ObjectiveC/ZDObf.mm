@@ -1,4 +1,4 @@
-#import "ZDStringProtection.h"
+#import "ZDObf.h"
 
 // Rust ABI 仅在实现文件使用，避免公共头依赖源码目录结构。
 #import "../../crates/runtime/include/zd_string_runtime.h"
@@ -9,21 +9,21 @@
 
 extern "C" const struct mach_header_64 _mh_execute_header;
 
-NSString *const ZDStringProtectionErrorDomain = @"ZDStringProtection";
+NSString *const ZDObfErrorDomain = @"ZDObf";
 
 struct ZDStringCaptureContext {
     NSString * __strong value;
 };
 
-static NSError *ZDStringProtectionError(uint32_t code) {
-    NSString *description = [NSString stringWithFormat:@"ZDStringProtection runtime error (%u)", code];
-    return [NSError errorWithDomain:ZDStringProtectionErrorDomain code:(NSInteger)code userInfo:@{NSLocalizedDescriptionKey: description}];
+static NSError *ZDObfError(uint32_t code) {
+    NSString *description = [NSString stringWithFormat:@"ZDObf runtime error (%u)", code];
+    return [NSError errorWithDomain:ZDObfErrorDomain code:(NSInteger)code userInfo:@{NSLocalizedDescriptionKey: description}];
 }
 
-BOOL ZDStringProtectionInitialize(NSData *blob, NSData *key, NSError **error) {
+BOOL ZDObfInitialize(NSData *blob, NSData *key, NSError **error) {
     if (blob.length == 0 || key.length != 32) {
         if (error != NULL) {
-            *error = ZDStringProtectionError(ZD_STRING_ERROR_INVALID_ARGUMENT);
+            *error = ZDObfError(ZD_STRING_ERROR_INVALID_ARGUMENT);
         }
         return NO;
     }
@@ -31,17 +31,17 @@ BOOL ZDStringProtectionInitialize(NSData *blob, NSData *key, NSError **error) {
     uint32_t code = zd_string_runtime_init((const uint8_t *)blob.bytes, blob.length, (const uint8_t *)key.bytes, key.length);
     if (code != ZD_STRING_ERROR_OK) {
         if (error != NULL) {
-            *error = ZDStringProtectionError(code);
+            *error = ZDObfError(code);
         }
         return NO;
     }
     return YES;
 }
 
-BOOL ZDStringProtectionInitializeEmbedded(NSData *key, NSError **error) {
+BOOL ZDObfInitializeEmbedded(NSData *key, NSError **error) {
     if (key.length != 32) {
         if (error != NULL) {
-            *error = ZDStringProtectionError(ZD_STRING_ERROR_INVALID_ARGUMENT);
+            *error = ZDObfError(ZD_STRING_ERROR_INVALID_ARGUMENT);
         }
         return NO;
     }
@@ -49,7 +49,7 @@ BOOL ZDStringProtectionInitializeEmbedded(NSData *key, NSError **error) {
     uint32_t code = zd_string_runtime_init_embedded((const uint8_t *)key.bytes, key.length);
     if (code != ZD_STRING_ERROR_OK) {
         if (error != NULL) {
-            *error = ZDStringProtectionError(code);
+            *error = ZDObfError(code);
         }
         return NO;
     }
@@ -69,7 +69,7 @@ uint32_t zd_string_runtime_init_embedded(const uint8_t *key, size_t keyLength) {
     return zd_string_runtime_init(section, (size_t)sectionLength, key, keyLength);
 }
 
-static uint32_t ZDStringProtectionCaptureCallback(const uint8_t *bytes, size_t length, void *context) {
+static uint32_t ZDObfCaptureCallback(const uint8_t *bytes, size_t length, void *context) {
     // 回调同步执行，NSString 在返回前复制数据，Rust 随后即可清理明文缓冲区。
     ZDStringCaptureContext *capture = (ZDStringCaptureContext *)context;
     if (bytes == NULL && length != 0) {
@@ -86,7 +86,7 @@ static uint32_t ZDStringProtectionCaptureCallback(const uint8_t *bytes, size_t l
     return ZD_STRING_ERROR_OK;
 }
 
-NSString * _Nullable LMStringDecodeBytes(const unsigned char *bytes, size_t length) {
+NSString * _Nullable ZDStringDecodeBytes(const unsigned char *bytes, size_t length) {
     if (bytes == NULL || length != sizeof(uint64_t)) {
         return nil;
     }
@@ -95,6 +95,6 @@ NSString * _Nullable LMStringDecodeBytes(const unsigned char *bytes, size_t leng
         stringID |= ((uint64_t)bytes[index]) << (index * 8);
     }
     ZDStringCaptureContext capture = { nil };
-    uint32_t code = zd_string_with_utf8(stringID, ZDStringProtectionCaptureCallback, (void *)&capture);
+    uint32_t code = zd_string_with_utf8(stringID, ZDObfCaptureCallback, (void *)&capture);
     return code == ZD_STRING_ERROR_OK ? capture.value : nil;
 }

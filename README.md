@@ -10,7 +10,7 @@ ZDObf 是一个面向 iOS 的字符串保护组件。它在构建阶段扫描 Sw
 Swift / Objective-C 源码
         │
         ├─ zdstring-gen scan
-        │    ├─ 生成只包含 LMStringDecodeBytes(...) 的源码
+        │    ├─ 生成只包含 ZDStringDecodeBytes(...) 的源码
         │    └─ 生成构建期明文 Manifest
         │
         ├─ zdstring-gen merge-manifests
@@ -21,11 +21,11 @@ Swift / Objective-C 源码
                     └─ embed_macho_section.sh
                          └─ 链接为 __DATA,__zdstring section
 
-ZDStringProtectionRuntime.xcframework + ZDStringProtection wrapper
+ZDObfRuntime.xcframework + ZDObf wrapper
                          └─ App 运行时初始化和按 ID 查询
 ```
 
-- **源码扫描**：`LMString("...")` 和 `LMString(@"...")` 只允许使用单个普通字符串字面量。扫描器把调用替换为内部 `LMStringDecodeBytes(...)`，原始文件不参与编译。
+- **源码扫描**：`ZDString("...")` 和 `ZDString(@"...")` 只允许使用单个普通字符串字面量。扫描器把调用替换为内部 `ZDStringDecodeBytes(...)`，原始文件不参与编译。
 - **加密目录**：Rust crypto core 使用 XChaCha20-Poly1305、HKDF 和 SHA-256 派生 ID、key、nonce 与 AAD，并校验完整 Manifest。
 - **Mach-O 嵌入**：构建脚本按 device/simulator 和架构生成 relocatable object，使用 `ld -sectcreate` 把 Blob 链接到最终 App。
 - **运行时查询**：wrapper 只把 Runtime callback 中的字节复制成 `String`/`NSString`，Runtime 返回后清理临时明文缓冲区。
@@ -42,7 +42,7 @@ Generator/                 Zig 源码扫描器和 Manifest 编排器
 scripts/                   Xcode Build Phase、XCFramework 和 Mach-O 脚本
 Tools/                     目录兼容访问器生成器
 Tests/                     Rust/Zig/Python/Apple 集成测试
-ZDStringProtection.podspec CocoaPods 规格
+ZDObf.podspec             CocoaPods 规格
 ```
 
 ## 环境要求
@@ -66,10 +66,10 @@ ZDStringProtection.podspec CocoaPods 规格
 在 App target 对应的 Podfile 中添加：
 
 ```ruby
-pod 'ZDStringProtection', :path => '/absolute/path/to/ZDObf'
+pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 ```
 
-然后执行 `pod install`。Pod 只编译 Apple wrapper 并链接已准备好的 `dist/ZDStringProtectionRuntime.xcframework`，不会在安装或日常 App 构建时调用 Cargo。
+然后执行 `pod install`。Pod 只编译 Apple wrapper 并链接已准备好的 `dist/ZDObfRuntime.xcframework`，不会在安装或日常 App 构建时调用 Cargo。
 
 ## 构建工具和密钥
 
@@ -78,7 +78,7 @@ cargo build --locked --release -p zd_string_crypto_cli
 (cd Generator && zig build -Doptimize=ReleaseSafe)
 ```
 
-产物为 `target/release/zdstring-crypto`、`Generator/zig-out/bin/zdstring-gen` 和 `dist/ZDStringProtectionRuntime.xcframework`。
+产物为 `target/release/zdstring-crypto`、`Generator/zig-out/bin/zdstring-gen` 和 `dist/ZDObfRuntime.xcframework`。
 
 构建 key 必须通过环境变量注入，且 Base64 解码后正好是 32 bytes：
 
@@ -94,7 +94,7 @@ export ZD_STRING_RUNTIME_KEY_B64="$(openssl rand -base64 32)"
 
 ```text
 ZD_STRING_NAMESPACE = $(PRODUCT_BUNDLE_IDENTIFIER)
-ZD_STRING_DERIVED_DIR = $(DERIVED_FILE_DIR)/ZDStringProtection
+ZD_STRING_DERIVED_DIR = $(DERIVED_FILE_DIR)/ZDObf
 ZD_STRING_SECTION_OBJECT = $(ZD_STRING_DERIVED_DIR)/zdstring-section.o
 ```
 
@@ -111,7 +111,7 @@ $(inherited)
 set -eu
 
 library_dir="$SRCROOT/../ZDObf"
-export ZD_STRING_DERIVED_DIR="${ZD_STRING_DERIVED_DIR:-$DERIVED_FILE_DIR/ZDStringProtection}"
+export ZD_STRING_DERIVED_DIR="${ZD_STRING_DERIVED_DIR:-$DERIVED_FILE_DIR/ZDObf}"
 export ZD_STRING_SECTION_OBJECT="${ZD_STRING_SECTION_OBJECT:-$ZD_STRING_DERIVED_DIR/zdstring-section.o}"
 mkdir -p "$ZD_STRING_DERIVED_DIR/Sources"
 source_map="$ZD_STRING_DERIVED_DIR/source-map.txt"
@@ -131,21 +131,21 @@ printf '%s|%s|%s\n' \
 
 示例中的 `library_dir`、App 源文件路径需按工程布局调整；脚本内部默认从自身路径定位生成器和加密 CLI。原始文件不参与编译，`ZDString` 只是构建期标记，不是透传函数或宏。不要在 Copy Bundle Resources 中加入 Manifest 或 Blob。
 
-生成文件引用使用 `sourceTree = DERIVED_FILE_DIR`，例如 `path = ZDStringProtection/Sources/ProtectedAPI.swift`，并创建对应的 Compile Sources 条目；不要引用某台机器的 DerivedData 绝对路径。脚本 Output Files 至少声明两份生成源码及 `$(ZD_STRING_SECTION_OBJECT)`。首次接入可将 `ENABLE_USER_SCRIPT_SANDBOXING` 设为 `NO`；若开启，需要完整声明脚本读取和写入的文件。
+生成文件引用使用 `sourceTree = DERIVED_FILE_DIR`，例如 `path = ZDObf/Sources/ProtectedAPI.swift`，并创建对应的 Compile Sources 条目；不要引用某台机器的 DerivedData 绝对路径。脚本 Output Files 至少声明两份生成源码及 `$(ZD_STRING_SECTION_OBJECT)`。首次接入可将 `ENABLE_USER_SCRIPT_SANDBOXING` 设为 `NO`；若开启，需要完整声明脚本读取和写入的文件。
 
-标记要求精确匹配 `LMString(`；不支持插值、动态表达式、拼接、raw/multiline 参数或 Unicode 转义。支持普通 UTF-8、`\\`、`\"`、`\n`、`\r`、`\t`、`\0`。详细扫描限制见 `ZDStringProtection-技术方案.md`。
+标记要求精确匹配 `ZDString(`；不支持插值、动态表达式、拼接、raw/multiline 参数或 Unicode 转义。支持普通 UTF-8、`\\`、`\"`、`\n`、`\r`、`\t`、`\0`。详细扫描限制见 `ZDObf-技术方案.md`。
 
 ## 使用方法
 
 ### Swift
 
 ```swift
-import ZDStringProtection
+import ZDObf
 
 enum ProtectedAPI {
     static func userURL() -> String? {
-        // 构建阶段会把 LMString 替换为内部 LMStringDecodeBytes。
-        return LMString("https://api.example.com/v1/user")
+        // 业务源码始终保留 ZDString；Build Phase 只编译生成文件。
+        return ZDString("https://api.example.com/v1/user")
     }
 }
 ```
@@ -154,30 +154,72 @@ enum ProtectedAPI {
 
 ```swift
 import Foundation
-import ZDStringProtection
+import ZDObf
 
 func prepareProtectedStrings(runtimeKey: Data) throws {
-    try ZDStringProtection.initializeEmbedded(key: runtimeKey)
+    try ZDObf.initializeEmbedded(key: runtimeKey)
 }
 ```
 
-需要明确错误时使用 `try ZDStringProtection.string(for: generatedID)`；兼容函数 `ZDStringID(generatedID)` 会把查询失败转换为 `nil`。
+初始化成功后，业务代码可以直接调用 `ProtectedAPI.userURL()`；构建生成的 `ZDStringDecodeBytes(...)` 只存在于 Derived Sources 中，业务源码不需要知道它。
+
+需要明确错误时，可以使用 Runtime 查询 API：
+
+```swift
+let value = try ZDObf.string(for: generatedID)
+```
+
+通常不需要手工维护 `generatedID`，因为 `ZDString("...")` 会在构建阶段自动生成对应的 ID 字节数组。
 
 ### Objective-C
 
 ```objc
-#import <ZDStringProtection/ZDStringProtection.h>
+#import <ZDObf/ZDObf.h>
 
 NSString * _Nullable ProtectedUserURL(void) {
-    return LMString(@"https://api.example.com/v1/user");
+    return ZDString(@"https://api.example.com/v1/user");
 }
 
 BOOL PrepareProtectedStrings(NSData *runtimeKey, NSError **error) {
-    return ZDStringProtectionInitializeEmbedded(runtimeKey, error);
+    return ZDObfInitializeEmbedded(runtimeKey, error);
 }
 ```
 
-Objective-C 初始化失败时通过 `NSError` 获取 Runtime 错误码；`ZDStringID(generatedID)` 返回 `nil` 表示未初始化、ID 不存在或解密失败。
+Objective-C 初始化失败时通过 `NSError` 获取 Runtime 错误码。初始化成功后，可以直接调用返回 `ZDString(...)` 的业务函数；生成源码中的 `ZDStringDecodeBytes(...)` 失败时返回 `nil`。
+
+如果需要从普通 `NSData` Blob 初始化，而不是从最终 Mach-O section 初始化：
+
+```objc
+NSError *error = nil;
+BOOL ok = ZDObfInitialize(blob, runtimeKey, &error);
+if (!ok) {
+    NSLog(@"ZDObf initialization failed: %@", error);
+}
+```
+
+### 最小接入清单
+
+1. 构建 Runtime 和 host 工具：
+
+   ```sh
+   ./scripts/build_xcframework.sh
+   cargo build --locked --release -p zd_string_crypto_cli
+   (cd Generator && zig build -Doptimize=ReleaseSafe)
+   ```
+
+2. 在 App target 中把包含 `ZDString(...)` 的原始 Swift/Objective-C 文件移出 Compile Sources，保留它们作为 Build Phase 的输入。
+3. 让 Run Script 生成的 `$(ZD_STRING_DERIVED_DIR)/Sources/*.swift` 和 `*.m` 进入 Compile Sources，并把 `$(ZD_STRING_SECTION_OBJECT)` 加入 Other Linker Flags。
+4. 在构建环境注入同一份 32-byte `ZD_STRING_RUNTIME_KEY_B64`，然后运行 `scripts/xcode_build_phase.sh`。
+5. App 启动时先调用 `ZDObf.initializeEmbedded(key:)` 或 `ZDObfInitializeEmbedded(...)`，再访问包含 `ZDString(...)` 的业务函数。
+6. 构建完成后检查 section 和明文泄露：
+
+   ```sh
+   scripts/verify_macho_artifact.sh \
+     --binary /absolute/path/to/Payload/MyApp.app/MyApp \
+     --forbid 'https://api.example.com/v1/user'
+   ```
+
+关键约束是：原始源码不能继续参与编译；只有生成源码可以进入 Compile Sources。否则 `ZDString(@"...")` 或 `ZDString("...")` 的明文仍会进入目标文件。
 
 ## 目录兼容模式
 
@@ -193,7 +235,7 @@ python3 Tools/zdstring_catalog_codegen.py \
 
 生成的 Swift 类型为 `ZDURLPathCatalog`，Objective-C 类型为 `ZDURLPathCatalogObjC`。访问器只包含稳定 ID，不包含目录明文；App Build Phase 仍需使用同一 JSON 生成 Blob。
 
-映射格式为“合法标识符 → 非空字符串”。把生成文件加入访问器 target，并让该 target 依赖 `ZDStringProtection`；然后在 App Build Settings 中设置 `ZD_STRING_CATALOG_MAPPING = /absolute/path/to/catalog.json`。仅目录模式运行 `"$library_dir/scripts/xcode_build_phase.sh"`，不传 source-map；仍需配置 namespace、key、链接 object 和 Runtime 初始化。映射变化后，重新生成访问器和 App Blob。
+映射格式为“合法标识符 → 非空字符串”。把生成文件加入访问器 target，并让该 target 依赖 `ZDObf`；然后在 App Build Settings 中设置 `ZD_STRING_CATALOG_MAPPING = /absolute/path/to/catalog.json`。仅目录模式运行 `"$library_dir/scripts/xcode_build_phase.sh"`，不传 source-map；仍需配置 namespace、key、链接 object 和 Runtime 初始化。映射变化后，重新生成访问器和 App Blob。
 
 目录访问器查询失败时返回空字符串，应先初始化并在请求边界检查空值。目录 ID 不依赖 App namespace；普通扫描 ID 依赖 namespace，修改 namespace 后必须同时重新生成源码和 Blob。
 
@@ -239,7 +281,7 @@ scripts/verify_macho_artifact.sh \
 ## 限制与安全边界
 
 - Runtime 初始化只允许成功一次；成功后再次初始化返回 `alreadyInitialized`。
-- `ZDStringProtectionInitializeEmbedded` 只从主可执行文件定位 `__DATA,__zdstring`，不会自动搜索 framework 或 dylib。
+- `ZDObfInitializeEmbedded` 只从主可执行文件定位 `__DATA,__zdstring`，不会自动搜索 framework 或 dylib。
 - Blob 最大 64 MiB，单条 UTF-8 字符串最大 1 MiB，最多 1,000,000 条记录。
 - 原始 Manifest、映射 JSON 和构建 key 只应存在于构建环境，不应加入 Bundle 或公开 CI artifact。
 - 该方案降低静态字符串提取便利性，不能抵御调试、Hook、运行时内存读取或客户端 key 提取。

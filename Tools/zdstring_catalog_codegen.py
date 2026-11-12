@@ -46,7 +46,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
             "\n".join(
                 [
                     f"+ (NSString *){identifier} {{",
-                    f"    NSString *value = LMStringDecodeBytes((const unsigned char[]){{{objc_bytes}}}, 8);",
+                    f"    NSString *value = ZDStringDecodeBytes((const unsigned char[]){{{objc_bytes}}}, 8);",
                     "    return value ?: @\"\";",
                     "}",
                 ]
@@ -56,7 +56,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
             "\n".join(
                 [
                     f"    public static var {identifier}: String {{",
-                    f"        LMStringDecodeBytes([{swift_bytes}]) ?? \"\"",
+                    f"        ZDStringDecodeBytes([{swift_bytes}]) ?? \"\"",
                     "    }",
                 ]
             )
@@ -76,7 +76,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
     objc_implementation = "\n".join(
         [
             '#import "ZDURLPathCatalog.h"',
-            '#import <ZDStringProtection/ZDStringProtection.h>',
+            '#import <ZDObf/ZDObf.h>',
             "",
             "@implementation ZDURLPathCatalogObjC",
             "",
@@ -88,7 +88,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
     )
     swift = "\n".join(
         [
-            "import ZDStringProtection",
+            "import ZDObf",
             "",
             "public enum ZDURLPathCatalog {",
             "\n\n".join(properties),

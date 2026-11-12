@@ -1,8 +1,8 @@
-# ZDStringProtection 技术方案
+# ZDObf 技术方案
 
 ## 1. 文档定位
 
-本文是 `ZDStringProtection` 当前实现的技术方案与接入契约，以代码和脚本的实际行为为准。
+本文是 `ZDObf` 当前实现的技术方案与接入契约，以代码和脚本的实际行为为准。
 
 - 组件目录：`ZDObf/`
 - 首次交付：Rust Runtime、加密核心、Rust CLI、Zig Generator、Apple Wrapper、XCFramework 构建。
@@ -20,23 +20,23 @@
 ### Objective-C
 
 ```objc
-NSString *url = LMString(@"https://api.example.com/v1/user");
+NSString *url = ZDString(@"https://api.example.com/v1/user");
 ```
 
 ### Swift
 
 ```swift
-let url = LMString("https://api.example.com/v1/user")
+let url = ZDString("https://api.example.com/v1/user")
 ```
 
 构建期将调用替换为只包含密文 ID 字节的内部解码表达式：
 
 ```objc
-NSString *url = LMStringDecodeBytes((const unsigned char[]){0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02}, 8);
+NSString *url = ZDStringDecodeBytes((const unsigned char[]){0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02}, 8);
 ```
 
 ```swift
-let url = LMStringDecodeBytes([0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02])
+let url = ZDStringDecodeBytes([0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02])
 ```
 
 最终 App 的数据流：
@@ -89,7 +89,7 @@ NSString / String
 ## 3. 组件与职责
 
 ```text
-ZDStringProtection/
+ZDObf/
 ├── crates/
 │   ├── crypto-core/          共享 Blob、ID、HKDF、AEAD 实现
 │   ├── crypto-cli/           host 构建期加密 CLI
@@ -99,7 +99,7 @@ ZDStringProtection/
 │   ├── ObjectiveC/           section bootstrap 与 ObjC Wrapper
 │   └── Swift/                Swift Wrapper
 ├── scripts/                  XCFramework、Xcode、section、CI 脚本
-└── ZDStringProtection.podspec
+└── ZDObf.podspec
 ```
 
 ### 3.1 Rust `crypto-core`
@@ -154,23 +154,23 @@ Runtime 使用进程级 `OnceLock`：
 Objective-C Wrapper 提供：
 
 ```objc
-BOOL ZDStringProtectionInitialize(NSData *blob, NSData *key, NSError **error);
-BOOL ZDStringProtectionInitializeEmbedded(NSData *key, NSError **error);
-NSString * _Nullable LMStringDecodeBytes(const unsigned char *bytes, size_t length);
+BOOL ZDObfInitialize(NSData *blob, NSData *key, NSError **error);
+BOOL ZDObfInitializeEmbedded(NSData *key, NSError **error);
+NSString * _Nullable ZDStringDecodeBytes(const unsigned char *bytes, size_t length);
 ```
 
-`ZDStringProtectionInitializeEmbedded` 通过 `getsectiondata(&_mh_execute_header, "__DATA", "__zdstring", ...)` 找到最终可执行文件的密文 section，再将 pointer、length 和 key 传给 Rust。定位 Mach-O 的平台代码停留在 Apple Wrapper；Rust 仍是纯运行时库。
+`ZDObfInitializeEmbedded` 通过 `getsectiondata(&_mh_execute_header, "__DATA", "__zdstring", ...)` 找到最终可执行文件的密文 section，再将 pointer、length 和 key 传给 Rust。定位 Mach-O 的平台代码停留在 Apple Wrapper；Rust 仍是纯运行时库。
 
 Swift Wrapper 提供：
 
 ```swift
-try ZDStringProtection.initialize(blob: blob, key: key)
-try ZDStringProtection.initializeEmbedded(key: key)
-let value = try ZDStringProtection.string(for: id)
-let optionalValue = LMStringDecodeBytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
+try ZDObf.initialize(blob: blob, key: key)
+try ZDObf.initializeEmbedded(key: key)
+let value = try ZDObf.string(for: id)
+let optionalValue = ZDStringDecodeBytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
 ```
 
-Swift 通过同步 callback 复制为 `String`；全局 `LMStringDecodeBytes` 返回 `String?`，与 Objective-C 的 `nil` 失败语义一致。
+Swift 通过同步 callback 复制为 `String`；全局 `ZDStringDecodeBytes` 返回 `String?`，与 Objective-C 的 `nil` 失败语义一致。
 
 ---
 
@@ -207,11 +207,11 @@ zdstring-gen scan \
 当前只接受单行、单一字面量调用：
 
 ```swift
-LMString("literal")
+ZDString("literal")
 ```
 
 ```objc
-LMString(@"literal")
+ZDString(@"literal")
 ```
 
 支持的转义仅为 `\\`, `\"`, `\n`, `\r`, `\t`, `\0`。ObjC 的多位八进制转义（如 `\012`）明确拒绝，不会误解为 NUL 加数字；Swift `\012` 仍表示 NUL 加 `12`。扫描器会跳过行注释、块注释（Swift 可嵌套）、Swift raw/multiline 字符串、普通字符串和 ObjC 字符常量，避免把示例文本改写；它不是完整语法分析器。Swift 插值表达式内的保护调用会显式失败，不能静默遗漏。
@@ -219,19 +219,19 @@ LMString(@"literal")
 以下形式会导致 `UnsupportedLiteral` 并使构建失败：
 
 ```swift
-LMString("https://\(host)")
-LMString("first" + "second")
-LMString(
+ZDString("https://\(host)")
+ZDString("first" + "second")
+ZDString(
     "multiline"
 )
 ```
 
 ```objc
-LMString([NSString stringWithFormat:@"%@", host])
-LMString(@"first" @"second")
+ZDString([NSString stringWithFormat:@"%@", host])
+ZDString(@"first" @"second")
 ```
 
-调用名当前要求精确匹配 `LMString(`；不支持空格、换行或其他 token 变体。改写后会生成内部 `LMStringDecodeBytes(...)`，因此 Swift 和 Objective-C target 都必须链接相应 Wrapper。生成源码只保留 ID 的小端字节数组，不保留原始明文或注释。
+调用名当前要求精确匹配 `ZDString(`；不支持空格、换行或其他 token 变体。改写后会生成内部 `ZDStringDecodeBytes(...)`，因此 Swift 和 Objective-C target 都必须链接相应 Wrapper。生成源码只保留 ID 的小端字节数组，不保留原始明文或注释。
 
 ### 4.3 Manifest
 
@@ -339,17 +339,17 @@ otool -l MyApp | rg -A 5 '__zdstring'
 
 ### 6.2 初始化
 
-App 在使用任意 `ZDStringID` 前，应只执行一次：
+App 在使用任意 `ZDString(...)` 生成字符串前，应只执行一次：
 
 ```objc
 NSError *error = nil;
-BOOL ok = ZDStringProtectionInitializeEmbedded(runtimeKey, &error);
+BOOL ok = ZDObfInitializeEmbedded(runtimeKey, &error);
 ```
 
 或：
 
 ```swift
-try ZDStringProtection.initializeEmbedded(key: runtimeKey)
+try ZDObf.initializeEmbedded(key: runtimeKey)
 ```
 
 Blob section 缺失、内容为空、key 长度错误、格式错误或认证失败均返回失败；不提供明文 fallback。
@@ -395,8 +395,8 @@ embed_macho_section.sh
 
 ```text
 ZD_STRING_NAMESPACE = $(PRODUCT_BUNDLE_IDENTIFIER)
-ZD_STRING_DERIVED_DIR = $(DERIVED_FILE_DIR)/ZDStringProtection
-ZD_STRING_SECTION_OBJECT = $(DERIVED_FILE_DIR)/ZDStringProtection/zdstring-section.o
+ZD_STRING_DERIVED_DIR = $(DERIVED_FILE_DIR)/ZDObf
+ZD_STRING_SECTION_OBJECT = $(DERIVED_FILE_DIR)/ZDObf/zdstring-section.o
 ZD_STRING_NONCE_MODE = random
 ZD_STRING_BUILD_SALT_B64 = 由 CI Secret 注入
 ZD_STRING_RUNTIME_KEY_B64 = 由 CI Secret 注入
@@ -412,7 +412,7 @@ Rust Runtime 与 App Blob 分离。发布 Runtime 时执行：
 scripts/build_xcframework.sh
 ```
 
-它生成 Device `arm64` 与 Simulator `arm64 + x86_64` 的静态 `ZDStringProtectionRuntime.xcframework`。`ZDStringProtection.podspec` 只引用发布流程预构建的 XCFramework；Pod 安装、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。
+它生成 Device `arm64` 与 Simulator `arm64 + x86_64` 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 只引用发布流程预构建的 XCFramework；Pod 安装、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。
 
 ---
 
@@ -459,7 +459,7 @@ scripts/verify_macho_artifact.sh \
 1. Scanner 尚未使用 Clang AST 或 SwiftSyntax，不能安全解析完整的 Swift/Objective-C 语法。
 2. 保护调用参数不支持多行、空格变体、Objective-C 拼接字面量、多位八进制转义、Swift 插值、原始字符串和 Unicode 转义；外围 raw/multiline 字符串可安全跳过。
 3. 不自动改写 `.xcodeproj`；source-map、Compile Sources 切换和 section object 链接是明确的一次性接入步骤。
-4. Runtime 未实现明文缓存；每次 `ZDStringID` 都解密，优先缩短明文驻留时间。
+4. Runtime 未实现明文缓存；每次 `ZDStringDecodeBytes(...)` 都解密，优先缩短明文驻留时间。
 5. Runtime 为进程单例，测试或多容器场景不能在同一进程中切换 Blob/key。
 6. CI 明文扫描只检查显式传入的 `--forbid` 值；它不是未知明文的通用检测器。
 7. 不提供抵抗动态调试、内存抓取或 API hook 的承诺。

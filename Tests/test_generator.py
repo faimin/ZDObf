@@ -42,23 +42,23 @@ class GeneratorTests(unittest.TestCase):
                 manifest_path.read_text(encoding="utf-8")
             )
 
-    def test_scanner_rewrites_lm_string_to_internal_byte_expression(self):
-        result, rewritten, manifest = self.scan_source('let value = LMString("secret")\n')
+    def test_scanner_rewrites_zd_string_to_internal_byte_expression(self):
+        result, rewritten, manifest = self.scan_source('let value = ZDString("secret")\n')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("LMStringDecodeBytes", rewritten)
+        self.assertIn("ZDStringDecodeBytes", rewritten)
         self.assertIn("0x", rewritten)
-        self.assertNotIn("LMStringID", rewritten)
+        self.assertNotIn("ZDStringID", rewritten)
         self.assertNotIn('"secret"', rewritten)
         self.assertEqual([entry["text"] for entry in manifest["strings"]], ["secret"])
 
-    def test_scanner_rewrites_objc_lm_string_to_internal_byte_expression(self):
+    def test_scanner_rewrites_objc_zd_string_to_internal_byte_expression(self):
         result, rewritten, manifest = self.scan_source(
-            'NSString *value = LMString(@"secret");\n', "objc"
+            'NSString *value = ZDString(@"secret");\n', "objc"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("LMStringDecodeBytes", rewritten)
+        self.assertIn("ZDStringDecodeBytes", rewritten)
         self.assertIn("0x", rewritten)
-        self.assertNotIn("LMStringID", rewritten)
+        self.assertNotIn("ZDStringID", rewritten)
         self.assertNotIn('@"secret"', rewritten)
         self.assertEqual([entry["text"] for entry in manifest["strings"]], ["secret"])
 
@@ -80,7 +80,7 @@ class GeneratorTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual([entry["text"] for entry in manifest["strings"]], ["real"])
-                self.assertIn("LMStringDecodeBytes", rewritten)
+                self.assertIn("ZDStringDecodeBytes", rewritten)
 
     def test_scanner_preserves_swift_regex_literals(self):
         # Swift 正则字面量中的 ZDString 文本属于正则内容，不能被改写为查询调用。
@@ -96,7 +96,7 @@ class GeneratorTests(unittest.TestCase):
                     prefix + '\nlet value = ZDString("real")\n'
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn("LMStringDecodeBytes", rewritten)
+                self.assertIn("ZDStringDecodeBytes", rewritten)
                 self.assertEqual([entry["text"] for entry in manifest["strings"]], ["real"])
 
     def test_scanner_preserves_objc_cpp_raw_strings(self):
@@ -109,7 +109,7 @@ class GeneratorTests(unittest.TestCase):
                     result, rewritten, manifest = self.scan_source(source, "objc")
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn(literal, rewritten)
-                    self.assertIn("LMStringDecodeBytes", rewritten)
+                    self.assertIn("ZDStringDecodeBytes", rewritten)
                     self.assertEqual([entry["text"] for entry in manifest["strings"]], ["real"])
 
     def test_scanner_preserves_objc_line_spliced_comments(self):
@@ -124,7 +124,7 @@ class GeneratorTests(unittest.TestCase):
                 result, rewritten, manifest = self.scan_source(source, "objc")
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertNotIn('ZDString(@"commented")', rewritten)
-                self.assertIn("LMStringDecodeBytes", rewritten)
+                self.assertIn("ZDStringDecodeBytes", rewritten)
                 self.assertEqual([entry["text"] for entry in manifest["strings"]], ["real"])
 
     def test_scanner_rejects_ambiguous_bare_regex_with_protected_call(self):

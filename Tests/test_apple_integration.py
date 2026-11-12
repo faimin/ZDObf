@@ -22,14 +22,14 @@ class AppleIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
             source = temporary / "client.m"
-            source.write_text('#import <ZDStringProtection/ZDStringProtection.h>\n', encoding="utf-8")
-            public = temporary / "Public" / "ZDStringProtection"
+            source.write_text('#import <ZDObf/ZDObf.h>\n', encoding="utf-8")
+            public = temporary / "Public" / "ZDObf"
             public.mkdir(parents=True)
-            (public / "ZDStringProtection.h").symlink_to(ROOT / "Apple/ObjectiveC/ZDStringProtection.h")
+            (public / "ZDObf.h").symlink_to(ROOT / "Apple/ObjectiveC/ZDObf.h")
             self.run_command(["xcrun", "clang", "-fsyntax-only", "-I", str(public.parent), str(source)])
-            framework = temporary / "ZDStringProtection.framework" / "Headers"
+            framework = temporary / "ZDObf.framework" / "Headers"
             framework.mkdir(parents=True)
-            shutil.copyfile(ROOT / "Apple/ObjectiveC/ZDStringProtection.h", framework / "ZDStringProtection.h")
+            shutil.copyfile(ROOT / "Apple/ObjectiveC/ZDObf.h", framework / "ZDObf.h")
             self.run_command(["xcrun", "clang", "-fsyntax-only", "-F", str(temporary), str(source)])
 
     def test_embedded_section_links_into_each_apple_platform(self):

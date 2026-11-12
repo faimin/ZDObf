@@ -4,7 +4,7 @@ set -eu
 # 统一构建 Rust 静态 XCFramework，避免把二进制产物提交到源码仓库。
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TARGET_DIR=${CARGO_TARGET_DIR:-"$ROOT_DIR/target"}
-OUTPUT_DIR=${1:-"$ROOT_DIR/dist/ZDStringProtectionRuntime.xcframework"}
+OUTPUT_DIR=${1:-"$ROOT_DIR/dist/ZDObfRuntime.xcframework"}
 
 cd "$ROOT_DIR"
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios

@@ -97,7 +97,7 @@ class XcodeBuildPhaseTests(unittest.TestCase):
             )
 
             self.assertEqual(source_result.returncode, 0, source_result.stderr)
-            self.assertIn("LMStringDecodeBytes", generated_source.read_text(encoding="utf-8"))
+            self.assertIn("ZDStringDecodeBytes", generated_source.read_text(encoding="utf-8"))
 
             # source-map 最后一行没有换行时也必须生成对应源码和 Blob。
             source_map.write_text(
@@ -112,7 +112,7 @@ class XcodeBuildPhaseTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(no_newline_result.returncode, 0, no_newline_result.stderr)
-            self.assertIn("LMStringDecodeBytes", generated_source.read_text(encoding="utf-8"))
+            self.assertIn("ZDStringDecodeBytes", generated_source.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

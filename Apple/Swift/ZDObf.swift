@@ -2,7 +2,7 @@ import Foundation
 
 // Swift 在同步 callback 内复制明文，Runtime 返回后即可 zeroize 自有缓冲区。
 
-public enum ZDStringProtectionError: Error, Equatable {
+public enum ZDObfError: Error, Equatable {
     case invalidArgument
     case alreadyInitialized
     case notInitialized
@@ -16,7 +16,7 @@ public enum ZDStringProtectionError: Error, Equatable {
     case unknown(UInt32)
 }
 
-public enum ZDStringProtection {
+public enum ZDObf {
     public static func initialize(blob: Data, key: Data) throws {
         let code = blob.withUnsafeBytes { blobBytes in
             key.withUnsafeBytes { keyBytes in
@@ -59,19 +59,19 @@ public enum ZDStringProtection {
             return ZD_STRING_ERROR_OK
         }, context)
         try throwIfNeeded(code)
-        guard let value = box.value else { throw ZDStringProtectionError.invalidUTF8 }
+        guard let value = box.value else { throw ZDObfError.invalidUTF8 }
         return value
     }
 }
 
 // Build-generated Swift sources pass an opaque little-endian ID byte token.
-public func LMStringDecodeBytes(_ bytes: [UInt8]) -> String? {
+public func ZDStringDecodeBytes(_ bytes: [UInt8]) -> String? {
     guard bytes.count == MemoryLayout<UInt64>.size else { return nil }
     var stringID: UInt64 = 0
     for (index, byte) in bytes.enumerated() {
         stringID |= UInt64(byte) << UInt64(index * 8)
     }
-    return try? ZDStringProtection.string(for: stringID)
+    return try? ZDObf.string(for: stringID)
 }
 
 @_silgen_name("zd_string_runtime_init")
@@ -103,16 +103,16 @@ private let ZD_STRING_ERROR_INVALID_ARGUMENT: UInt32 = 1
 private func throwIfNeeded(_ code: UInt32) throws {
     guard code != ZD_STRING_ERROR_OK else { return }
     switch code {
-    case 1: throw ZDStringProtectionError.invalidArgument
-    case 2: throw ZDStringProtectionError.alreadyInitialized
-    case 3: throw ZDStringProtectionError.notInitialized
-    case 4: throw ZDStringProtectionError.invalidID
-    case 5: throw ZDStringProtectionError.malformedBlob
-    case 6: throw ZDStringProtectionError.authenticationFailed
-    case 7: throw ZDStringProtectionError.invalidUTF8
-    case 8: throw ZDStringProtectionError.allocationFailed
-    case 9: throw ZDStringProtectionError.limitExceeded
-    case 100: throw ZDStringProtectionError.internalError
-    default: throw ZDStringProtectionError.unknown(code)
+    case 1: throw ZDObfError.invalidArgument
+    case 2: throw ZDObfError.alreadyInitialized
+    case 3: throw ZDObfError.notInitialized
+    case 4: throw ZDObfError.invalidID
+    case 5: throw ZDObfError.malformedBlob
+    case 6: throw ZDObfError.authenticationFailed
+    case 7: throw ZDObfError.invalidUTF8
+    case 8: throw ZDObfError.allocationFailed
+    case 9: throw ZDObfError.limitExceeded
+    case 100: throw ZDObfError.internalError
+    default: throw ZDObfError.unknown(code)
     }
 }

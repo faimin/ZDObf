@@ -1,27 +1,88 @@
 #!/bin/sh
 set -eu
 
-# 统一构建 Rust 静态 XCFramework，避免把二进制产物提交到源码仓库。
+# 构建覆盖 Apple 平台的 Rust static XCFramework。
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TARGET_DIR=${CARGO_TARGET_DIR:-"$ROOT_DIR/target"}
 OUTPUT_DIR=${1:-"$ROOT_DIR/dist/ZDObfRuntime.xcframework"}
+HEADERS_DIR="$ROOT_DIR/crates/runtime/include"
 
 cd "$ROOT_DIR"
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-cargo build --locked --release -p zd_string_runtime --target aarch64-apple-ios
-cargo build --locked --release -p zd_string_runtime --target aarch64-apple-ios-sim
-cargo build --locked --release -p zd_string_runtime --target x86_64-apple-ios
+
+# Rust 1.99 stable 提供这些 Apple targets；rustup 对已安装 target 是幂等的。
+rustup target add \
+    aarch64-apple-ios \
+    aarch64-apple-ios-sim \
+    x86_64-apple-ios \
+    aarch64-apple-tvos \
+    aarch64-apple-tvos-sim \
+    aarch64-apple-watchos \
+    aarch64-apple-watchos-sim \
+    aarch64-apple-visionos \
+    aarch64-apple-visionos-sim \
+    aarch64-apple-darwin \
+    x86_64-apple-darwin \
+    aarch64-apple-ios-macabi \
+    x86_64-apple-ios-macabi
+
+for target in \
+    aarch64-apple-ios \
+    aarch64-apple-ios-sim \
+    x86_64-apple-ios \
+    aarch64-apple-tvos \
+    aarch64-apple-tvos-sim \
+    aarch64-apple-watchos \
+    aarch64-apple-watchos-sim \
+    aarch64-apple-visionos \
+    aarch64-apple-visionos-sim \
+    aarch64-apple-darwin \
+    x86_64-apple-darwin \
+    aarch64-apple-ios-macabi \
+    x86_64-apple-ios-macabi
+do
+    cargo build --locked --release -p zd_string_runtime --target "$target"
+done
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$(dirname -- "$OUTPUT_DIR")"
-SIMULATOR_LIBRARY="$TARGET_DIR/zd_string_runtime-simulator.a"
-lipo -create \
-  "$TARGET_DIR/aarch64-apple-ios-sim/release/libzd_string_runtime.a" \
-  "$TARGET_DIR/x86_64-apple-ios/release/libzd_string_runtime.a" \
-  -output "$SIMULATOR_LIBRARY"
+WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/zdobf-xcframework.XXXXXX")
+trap 'rm -rf "$WORK_DIR"' EXIT HUP INT TERM
+
+library() {
+    printf '%s/%s/release/libzd_string_runtime.a' "$TARGET_DIR" "$1"
+}
+
+make_universal() {
+    output=$1
+    shift
+    xcrun lipo -create "$@" -output "$output"
+}
+
+mkdir -p "$WORK_DIR/ios-simulator" "$WORK_DIR/macos" "$WORK_DIR/catalyst"
+IOS_SIMULATOR="$WORK_DIR/ios-simulator/libzd_string_runtime.a"
+MACOS_LIBRARY="$WORK_DIR/macos/libzd_string_runtime.a"
+CATALYST_LIBRARY="$WORK_DIR/catalyst/libzd_string_runtime.a"
+make_universal "$IOS_SIMULATOR" \
+    "$(library aarch64-apple-ios-sim)" \
+    "$(library x86_64-apple-ios)"
+make_universal "$MACOS_LIBRARY" \
+    "$(library aarch64-apple-darwin)" \
+    "$(library x86_64-apple-darwin)"
+make_universal "$CATALYST_LIBRARY" \
+    "$(library aarch64-apple-ios-macabi)" \
+    "$(library x86_64-apple-ios-macabi)"
+
 xcodebuild -create-xcframework \
-  -library "$TARGET_DIR/aarch64-apple-ios/release/libzd_string_runtime.a" \
-  -headers "$ROOT_DIR/crates/runtime/include" \
-  -library "$SIMULATOR_LIBRARY" \
-  -headers "$ROOT_DIR/crates/runtime/include" \
-  -output "$OUTPUT_DIR"
+    -library "$(library aarch64-apple-ios)" -headers "$HEADERS_DIR" \
+    -library "$IOS_SIMULATOR" -headers "$HEADERS_DIR" \
+    -library "$(library aarch64-apple-tvos)" -headers "$HEADERS_DIR" \
+    -library "$(library aarch64-apple-tvos-sim)" -headers "$HEADERS_DIR" \
+    -library "$(library aarch64-apple-watchos)" -headers "$HEADERS_DIR" \
+    -library "$(library aarch64-apple-watchos-sim)" -headers "$HEADERS_DIR" \
+    -library "$(library aarch64-apple-visionos)" -headers "$HEADERS_DIR" \
+    -library "$(library aarch64-apple-visionos-sim)" -headers "$HEADERS_DIR" \
+    -library "$MACOS_LIBRARY" -headers "$HEADERS_DIR" \
+    -library "$CATALYST_LIBRARY" -headers "$HEADERS_DIR" \
+    -output "$OUTPUT_DIR"
+
+printf 'Created %s\n' "$OUTPUT_DIR"

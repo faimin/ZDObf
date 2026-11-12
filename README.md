@@ -92,6 +92,23 @@ export ZD_STRING_RUNTIME_KEY_B64="$(openssl rand -base64 32)"
 
 上面的随机命令只用于首次创建开发密钥；应将其保存到自己的密钥管理系统，后续构建复用并按发布版本管理。运行时收到的是 Base64 文本时，需要先解码为 `Data` / `NSData`，不能把 Base64 字符串的 UTF-8 字节直接作为 key。组件不自动把构建环境变量传给 App，也不提供密钥获取服务。
 
+### 更换 Runtime key
+
+Runtime key 可以更换，但构建期和运行时必须同步使用同一份新 key，并重新构建、链接和发布 App。推荐按 App 版本轮换，不要在已经运行的进程中尝试切换 key。
+
+1. 保留旧版本使用的 key，确保已经发布的旧 App 仍能解密自己的 Blob。
+2. 在密钥管理系统中生成新的 32-byte key，并只注入当前构建环境：
+
+   ```sh
+   export ZD_STRING_RUNTIME_KEY_B64="$(openssl rand -base64 32)"
+   ```
+
+3. 使用新 key 重新运行 App 的 `scripts/xcode_build_phase.sh`，让扫描器、加密 CLI 和 `__DATA,__zdstring` section 生成新的 Blob。
+4. 让新 App 启动时从同一密钥管理系统取得这份新 key，再调用 `ZDObf.initializeEmbedded(key:)` 或 `ZDObfInitializeEmbedded(...)`。
+5. 完成新的 App 构建并发布；旧 App 继续使用旧 key，新 App 使用新 key。
+
+只更新运行时 key 而不重新生成 Blob，或只重新生成 Blob 而不更新运行时 key，都会导致 `authenticationFailed`。Runtime 初始化成功后，当前进程不能再次切换 key；如果需要旧 key 与新 key 在同一版本同时兼容，需要另外设计 key version 和多 key 迁移协议，当前实现不提供该能力。
+
 ## Xcode 接入
 
 在最终 App target 增加：

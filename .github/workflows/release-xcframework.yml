@@ -1,0 +1,48 @@
+name: Build and release ZDObfRuntime XCFramework
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build all Apple platform slices
+        run: ./scripts/build_xcframework.sh
+
+      - name: Package XCFramework
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/ZDObfRuntime.xcframework \
+            dist/ZDObfRuntime.xcframework.zip
+          shasum -a 256 dist/ZDObfRuntime.xcframework.zip \
+            > dist/ZDObfRuntime.xcframework.zip.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZDObfRuntime-xcframework
+          path: |
+            dist/ZDObfRuntime.xcframework.zip
+            dist/ZDObfRuntime.xcframework.zip.sha256
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/ZDObfRuntime.xcframework.zip
+            dist/ZDObfRuntime.xcframework.zip.sha256
+          generate_release_notes: true

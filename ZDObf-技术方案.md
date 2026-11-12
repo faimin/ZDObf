@@ -29,7 +29,7 @@ NSString *url = ZDString(@"https://api.example.com/v1/user");
 let url = ZDString("https://api.example.com/v1/user")
 ```
 
-构建期将调用替换为只包含密文 ID 字节的内部解码表达式：
+构建期将调用替换为只包含稳定查询 ID 字节的内部解码表达式（以下字节仅为格式示意）：
 
 ```objc
 NSString *url = ZDStringDecodeBytes((const unsigned char[]){0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02}, 8);
@@ -38,6 +38,8 @@ NSString *url = ZDStringDecodeBytes((const unsigned char[]){0x82, 0x4a, 0x8f, 0x
 ```swift
 let url = ZDStringDecodeBytes([0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02])
 ```
+
+这里的 8 字节数组是 `u64` 查询 ID 的小端表示，不是字符串密文。`ZDStringDecodeBytes` 先还原 ID，再查询已初始化的 Rust Runtime；XChaCha20-Poly1305 密文保存在独立的 LMST Blob 中，最终嵌入 Mach-O section。该实现依赖 Blob 和相同的运行时 key，不能只凭源码中的字节数组独立解密字符串。业务开发者不需要编写或维护内部表达式。
 
 最终 App 的数据流：
 
@@ -397,10 +399,9 @@ embed_macho_section.sh
 ZD_STRING_NAMESPACE = $(PRODUCT_BUNDLE_IDENTIFIER)
 ZD_STRING_DERIVED_DIR = $(DERIVED_FILE_DIR)/ZDObf
 ZD_STRING_SECTION_OBJECT = $(DERIVED_FILE_DIR)/ZDObf/zdstring-section.o
-ZD_STRING_NONCE_MODE = random
-ZD_STRING_BUILD_SALT_B64 = 由 CI Secret 注入
-ZD_STRING_RUNTIME_KEY_B64 = 由 CI Secret 注入
 ```
+
+`ZD_STRING_RUNTIME_KEY_B64` 通过构建环境或 CI Secret 注入，不直接写进 Build Settings。Debug 默认使用 deterministic nonce，名称为 `Release` 的配置默认使用 random nonce；可用 `ZD_STRING_PROFILE` 和 `ZD_STRING_NONCE_MODE` 显式覆盖。只有 Release + deterministic 组合必须额外提供 Base64 解码后为 32 字节的 `ZD_STRING_BUILD_SALT_B64`。
 
 可选变量：`ZD_STRING_GENERATOR`、`ZD_STRING_CRYPTO_CLI`、`ZD_STRING_PROFILE`、`ZD_STRING_SDK`、`ZD_STRING_ARCH`。脚本会以 `CONFIGURATION=Release` 自动选择 `profile=release` 和 random nonce，除非显式覆盖。
 
@@ -413,6 +414,119 @@ scripts/build_xcframework.sh
 ```
 
 它生成 Device `arm64` 与 Simulator `arm64 + x86_64` 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 只引用发布流程预构建的 XCFramework；Pod 安装、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。
+
+### 7.4 端到端接入示例
+
+假设 App 和本仓库位于同一父目录：
+
+```text
+Workspace/
+├── ZDObf/
+└── MyApp/
+    ├── MyApp.xcodeproj
+    ├── Podfile
+    └── App/Protected/
+        ├── ProtectedAPI.swift
+        └── ProtectedAPIObjC.m
+```
+
+先在 `ZDObf/` 中构建 host 工具和 Runtime：
+
+```sh
+cargo build --locked --release -p zd_string_crypto_cli
+(cd Generator && zig build -Doptimize=ReleaseSafe)
+./scripts/build_xcframework.sh
+```
+
+在 `MyApp/Podfile` 的 App target 中添加 `pod 'ZDObf', :path => '../ZDObf'`，运行 `pod install` 后打开 `.xcworkspace`。
+
+Swift 原始业务文件 `App/Protected/ProtectedAPI.swift`：
+
+```swift
+import Foundation
+import ZDObf
+
+enum ProtectedAPI {
+    static func userURL() -> URL? {
+        guard let text = ZDString("https://api.example.com/v1/user") else { return nil }
+        return URL(string: text)
+    }
+}
+```
+
+Objective-C 原始业务文件 `App/Protected/ProtectedAPIObjC.m`：
+
+```objc
+#import <ZDObf/ZDObf.h>
+
+NSString * _Nullable ProtectedUserURL(void) {
+    return ZDString(@"https://api.example.com/v1/user");
+}
+```
+
+在 Compile Sources 前新增 Run Script，设置第 7.2 节中的三个 Build Settings，并在 Other Linker Flags 追加 `"$(ZD_STRING_SECTION_OBJECT)"`：
+
+```sh
+set -eu
+library_dir="$SRCROOT/../ZDObf"
+export ZD_STRING_DERIVED_DIR="${ZD_STRING_DERIVED_DIR:-$DERIVED_FILE_DIR/ZDObf}"
+export ZD_STRING_SECTION_OBJECT="${ZD_STRING_SECTION_OBJECT:-$ZD_STRING_DERIVED_DIR/zdstring-section.o}"
+mkdir -p "$ZD_STRING_DERIVED_DIR/Sources"
+source_map="$ZD_STRING_DERIVED_DIR/source-map.txt"
+printf '%s|%s|%s\n' \
+  "$SRCROOT/App/Protected/ProtectedAPI.swift" \
+  "$ZD_STRING_DERIVED_DIR/Sources/ProtectedAPI.swift" swift \
+  "$SRCROOT/App/Protected/ProtectedAPIObjC.m" \
+  "$ZD_STRING_DERIVED_DIR/Sources/ProtectedAPIObjC.m" objc \
+  > "$source_map"
+: "${ZD_STRING_RUNTIME_KEY_B64:?Inject the build key before compiling}"
+"$library_dir/scripts/xcode_build_phase.sh" "$source_map"
+```
+
+source-map 每行只接受三个以 `|` 分隔的字段，路径必须与工程对应；不支持路径中包含 `|`。Objective-C++ 源码使用 `objc` 语言标记，并保留生成文件的 `.mm` 后缀。
+
+Run Script 的输入和输出声明如下：
+
+| Xcode 项 | 文件 |
+| --- | --- |
+| Input Files | `$(SRCROOT)/App/Protected/ProtectedAPI.swift` |
+| Input Files | `$(SRCROOT)/App/Protected/ProtectedAPIObjC.m` |
+| Output Files | `$(ZD_STRING_DERIVED_DIR)/Sources/ProtectedAPI.swift` |
+| Output Files | `$(ZD_STRING_DERIVED_DIR)/Sources/ProtectedAPIObjC.m` |
+| Output Files | `$(ZD_STRING_SECTION_OBJECT)` |
+
+将两个原始文件移出 Compile Sources；为生成文件添加 `sourceTree = DERIVED_FILE_DIR` 引用，`path` 分别为 `ZDObf/Sources/ProtectedAPI.swift` 和 `ZDObf/Sources/ProtectedAPIObjC.m`，并将生成引用加入 Compile Sources。首次接入关闭 Based on dependency analysis；若启用脚本 sandbox，必须额外声明工具、脚本、Manifest 和 Blob 等所有读写路径，或先设置 `ENABLE_USER_SCRIPT_SANDBOXING = NO`。
+
+在启动时由业务自己的密钥提供方取得与构建一致的 key，然后二选一初始化。Swift：
+
+```swift
+func initializeProtectedStrings(keyBase64: String) throws {
+    guard let key = Data(base64Encoded: keyBase64), key.count == 32 else {
+        throw ZDObfError.invalidArgument
+    }
+    try ZDObf.initializeEmbedded(key: key)
+}
+```
+
+Objective-C：
+
+```objc
+BOOL InitializeProtectedStrings(NSData *runtimeKey, NSError **error) {
+    return ZDObfInitializeEmbedded(runtimeKey, error);
+}
+```
+
+Swift 启动函数所在文件需要导入 `Foundation` 和 `ZDObf`，Objective-C 文件导入 `<ZDObf/ZDObf.h>`。两条路径共享同一个 Runtime 单例，一个进程只选择其中一条成功初始化一次。初始化成功后才调用 `ProtectedAPI.userURL()` 或 `ProtectedUserURL()`；未初始化或查询失败时，生成的访问器返回 `nil`。Swift 可以直接用 `URLSession.shared.dataTask(with: url).resume()` 发起请求。
+
+构建后的验收命令：
+
+```sh
+scripts/verify_macho_artifact.sh \
+  --binary /absolute/path/to/Payload/MyApp.app/MyApp \
+  --forbid 'https://api.example.com/v1/user'
+```
+
+该检查证明指定字符串未以直接明文形式出现在该二进制中，不能证明客户端 key 无法提取，也不能替代实际 App 初始化与请求回归。Manifest 是构建期明文中间文件，不能复制到 Bundle 或公开构建产物。
 
 ---
 

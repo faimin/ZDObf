@@ -30,6 +30,8 @@ ZDObfRuntime.xcframework + ZDObf wrapper
 - **Mach-O 嵌入**：构建脚本按 device/simulator 和架构生成 relocatable object，使用 `ld -sectcreate` 把 Blob 链接到最终 App。
 - **运行时查询**：wrapper 只把 Runtime callback 中的字节复制成 `String`/`NSString`，Runtime 返回后清理临时明文缓冲区。
 
+`ZDStringDecodeBytes(...)` 的 8 字节参数是稳定查询 ID 的小端表示，不是字符串密文本身。真正的密文位于 `__DATA,__zdstring` section；wrapper 还原 ID 后调用 Rust Runtime 解密对应记录。业务源码只写 `ZDString(...)`，无需维护字节数组或生成函数名。
+
 ## 目录结构
 
 ```text
@@ -87,6 +89,8 @@ export ZD_STRING_RUNTIME_KEY_B64="$(openssl rand -base64 32)"
 ```
 
 正式环境应从 CI Secret Manager 注入。不要把 key 写入源码、Scheme、`.xcconfig`、Podfile、Bundle 或 README；App 初始化时必须取得同一份原始 32-byte key。
+
+上面的随机命令只用于首次创建开发密钥；应将其保存到自己的密钥管理系统，后续构建复用并按发布版本管理。运行时收到的是 Base64 文本时，需要先解码为 `Data` / `NSData`，不能把 Base64 字符串的 UTF-8 字节直接作为 key。组件不自动把构建环境变量传给 App，也不提供密钥获取服务。
 
 ## Xcode 接入
 
@@ -171,6 +175,34 @@ let value = try ZDObf.string(for: generatedID)
 
 通常不需要手工维护 `generatedID`，因为 `ZDString("...")` 会在构建阶段自动生成对应的 ID 字节数组。
 
+例如，把下面的请求方法放在已配置扫描的 `App/Protected/ProtectedAPI.swift` 中；`startProtectedRequest` 可以放在普通启动文件中。`keyBase64` 由 App 自己的密钥提供方传入，必须对应当前构建所用的 key：
+
+```swift
+import Foundation
+import ZDObf
+
+enum ProtectedRequest {
+    static func userRequest() -> URLRequest? {
+        guard let text = ZDString("https://api.example.com/v1/user"),
+              let url = URL(string: text) else { return nil }
+        return URLRequest(url: url)
+    }
+}
+
+func startProtectedRequest(keyBase64: String) throws {
+    guard let key = Data(base64Encoded: keyBase64), key.count == 32 else {
+        throw ZDObfError.invalidArgument
+    }
+    try ZDObf.initializeEmbedded(key: key)
+    guard let request = ProtectedRequest.userRequest() else {
+        throw ZDObfError.invalidID
+    }
+    URLSession.shared.dataTask(with: request).resume()
+}
+```
+
+上例将字符串访问失败转换为业务层的 `invalidID`；需要诊断具体原因时使用前述抛错查询接口。`startProtectedRequest` 中的初始化只应在启动流程执行一次；后续请求直接调用 `ProtectedRequest.userRequest()`。
+
 ### Objective-C
 
 ```objc
@@ -184,6 +216,36 @@ BOOL PrepareProtectedStrings(NSData *runtimeKey, NSError **error) {
     return ZDObfInitializeEmbedded(runtimeKey, error);
 }
 ```
+
+在普通启动代码中先初始化，再调用已扫描业务文件中的 `ProtectedUserURL()`。下面的 `keyBase64` 同样由业务密钥提供方传入：
+
+```objc
+#import <ZDObf/ZDObf.h>
+
+extern NSString * _Nullable ProtectedUserURL(void);
+
+BOOL StartProtectedRequest(NSString *keyBase64, NSError **error) {
+    NSData *key = [[NSData alloc] initWithBase64EncodedString:keyBase64 options:0];
+    if (key.length != 32) {
+        if (error != NULL) {
+            *error = [NSError errorWithDomain:ZDObfErrorDomain code:1 userInfo:nil];
+        }
+        return NO;
+    }
+    if (!ZDObfInitializeEmbedded(key, error)) {
+        return NO;
+    }
+    NSString *text = ProtectedUserURL();
+    NSURL *url = text == nil ? nil : [NSURL URLWithString:text];
+    if (url == nil) {
+        return NO;
+    }
+    [[[NSURLSession sharedSession] dataTaskWithURL:url] resume];
+    return YES;
+}
+```
+
+初始化只执行一次；不要在每个网络请求前重复调用此启动函数。
 
 Objective-C 初始化失败时通过 `NSError` 获取 Runtime 错误码。初始化成功后，可以直接调用返回 `ZDString(...)` 的业务函数；生成源码中的 `ZDStringDecodeBytes(...)` 失败时返回 `nil`。
 

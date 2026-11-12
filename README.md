@@ -48,7 +48,7 @@ ZDStringProtection.podspec CocoaPods 规格
 ## 环境要求
 
 - macOS、完整 Xcode 27 或兼容版本
-- Rust 1.99.1（见 `rust-toolchain.toml`）
+- Rust stable toolchain（支持 Rust 2024 edition）
 - Zig 0.17.1
 - Python 3
 - CocoaPods 1.17 或兼容版本

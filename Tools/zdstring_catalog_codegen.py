@@ -39,12 +39,14 @@ def render_catalog(mapping: object) -> dict[str, str]:
     methods = []
     properties = []
     for identifier, value in entries:
-        stable_id = f"0x{catalog_id(value):016x}"
+        stable_id = catalog_id(value)
+        objc_bytes = ", ".join(f"0x{byte:02x}" for byte in stable_id.to_bytes(8, "little"))
+        swift_bytes = ", ".join(f"0x{byte:02x}" for byte in stable_id.to_bytes(8, "little"))
         methods.append(
             "\n".join(
                 [
                     f"+ (NSString *){identifier} {{",
-                    f"    NSString *value = ZDStringID({stable_id});",
+                    f"    NSString *value = LMStringDecodeBytes((const unsigned char[]){{{objc_bytes}}}, 8);",
                     "    return value ?: @\"\";",
                     "}",
                 ]
@@ -54,7 +56,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
             "\n".join(
                 [
                     f"    public static var {identifier}: String {{",
-                    f"        ZDStringID({stable_id}) ?? \"\"",
+                    f"        LMStringDecodeBytes([{swift_bytes}]) ?? \"\"",
                     "    }",
                 ]
             )

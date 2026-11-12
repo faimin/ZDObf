@@ -86,7 +86,14 @@ static uint32_t ZDStringProtectionCaptureCallback(const uint8_t *bytes, size_t l
     return ZD_STRING_ERROR_OK;
 }
 
-NSString * _Nullable ZDStringID(uint64_t stringID) {
+NSString * _Nullable LMStringDecodeBytes(const unsigned char *bytes, size_t length) {
+    if (bytes == NULL || length != sizeof(uint64_t)) {
+        return nil;
+    }
+    uint64_t stringID = 0;
+    for (size_t index = 0; index < length; index++) {
+        stringID |= ((uint64_t)bytes[index]) << (index * 8);
+    }
     ZDStringCaptureContext capture = { nil };
     uint32_t code = zd_string_with_utf8(stringID, ZDStringProtectionCaptureCallback, (void *)&capture);
     return code == ZD_STRING_ERROR_OK ? capture.value : nil;

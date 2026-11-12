@@ -1,2 +1,2 @@
-NSString *url = ZDString(@"https://api.example.com/v1/user");
-// ZDString(@"ignored")
+NSString *url = LMString(@"https://api.example.com/v1/user");
+// LMString(@"ignored")

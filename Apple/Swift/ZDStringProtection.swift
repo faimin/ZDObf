@@ -64,9 +64,14 @@ public enum ZDStringProtection {
     }
 }
 
-// 源码扫描后的 Swift 调用统一落到 ID 查询，失败时保持与 Objective-C API 一致的 nil 语义。
-public func ZDStringID(_ stringID: UInt64) -> String? {
-    try? ZDStringProtection.string(for: stringID)
+// Build-generated Swift sources pass an opaque little-endian ID byte token.
+public func LMStringDecodeBytes(_ bytes: [UInt8]) -> String? {
+    guard bytes.count == MemoryLayout<UInt64>.size else { return nil }
+    var stringID: UInt64 = 0
+    for (index, byte) in bytes.enumerated() {
+        stringID |= UInt64(byte) << UInt64(index * 8)
+    }
+    return try? ZDStringProtection.string(for: stringID)
 }
 
 @_silgen_name("zd_string_runtime_init")

@@ -20,23 +20,23 @@
 ### Objective-C
 
 ```objc
-NSString *url = ZDString(@"https://api.example.com/v1/user");
+NSString *url = LMString(@"https://api.example.com/v1/user");
 ```
 
 ### Swift
 
 ```swift
-let url = ZDString("https://api.example.com/v1/user")
+let url = LMString("https://api.example.com/v1/user")
 ```
 
-构建期将调用替换为稳定 ID：
+构建期将调用替换为只包含密文 ID 字节的内部解码表达式：
 
 ```objc
-NSString *url = ZDStringID(0x212179d7f8f84a82);
+NSString *url = LMStringDecodeBytes((const unsigned char[]){0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02}, 8);
 ```
 
 ```swift
-let url = ZDStringID(0x212179d7f8f84a82)
+let url = LMStringDecodeBytes([0x82, 0x4a, 0x8f, 0xd7, 0x21, 0x79, 0x12, 0x02])
 ```
 
 最终 App 的数据流：
@@ -156,7 +156,7 @@ Objective-C Wrapper 提供：
 ```objc
 BOOL ZDStringProtectionInitialize(NSData *blob, NSData *key, NSError **error);
 BOOL ZDStringProtectionInitializeEmbedded(NSData *key, NSError **error);
-NSString * _Nullable ZDStringID(uint64_t stringID);
+NSString * _Nullable LMStringDecodeBytes(const unsigned char *bytes, size_t length);
 ```
 
 `ZDStringProtectionInitializeEmbedded` 通过 `getsectiondata(&_mh_execute_header, "__DATA", "__zdstring", ...)` 找到最终可执行文件的密文 section，再将 pointer、length 和 key 传给 Rust。定位 Mach-O 的平台代码停留在 Apple Wrapper；Rust 仍是纯运行时库。
@@ -167,10 +167,10 @@ Swift Wrapper 提供：
 try ZDStringProtection.initialize(blob: blob, key: key)
 try ZDStringProtection.initializeEmbedded(key: key)
 let value = try ZDStringProtection.string(for: id)
-let optionalValue = ZDStringID(id)
+let optionalValue = LMStringDecodeBytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08])
 ```
 
-Swift 通过同步 callback 复制为 `String`；全局 `ZDStringID` 返回 `String?`，与 Objective-C 的 `nil` 失败语义一致。
+Swift 通过同步 callback 复制为 `String`；全局 `LMStringDecodeBytes` 返回 `String?`，与 Objective-C 的 `nil` 失败语义一致。
 
 ---
 
@@ -207,11 +207,11 @@ zdstring-gen scan \
 当前只接受单行、单一字面量调用：
 
 ```swift
-ZDString("literal")
+LMString("literal")
 ```
 
 ```objc
-ZDString(@"literal")
+LMString(@"literal")
 ```
 
 支持的转义仅为 `\\`, `\"`, `\n`, `\r`, `\t`, `\0`。ObjC 的多位八进制转义（如 `\012`）明确拒绝，不会误解为 NUL 加数字；Swift `\012` 仍表示 NUL 加 `12`。扫描器会跳过行注释、块注释（Swift 可嵌套）、Swift raw/multiline 字符串、普通字符串和 ObjC 字符常量，避免把示例文本改写；它不是完整语法分析器。Swift 插值表达式内的保护调用会显式失败，不能静默遗漏。
@@ -219,19 +219,19 @@ ZDString(@"literal")
 以下形式会导致 `UnsupportedLiteral` 并使构建失败：
 
 ```swift
-ZDString("https://\(host)")
-ZDString("first" + "second")
-ZDString(
+LMString("https://\(host)")
+LMString("first" + "second")
+LMString(
     "multiline"
 )
 ```
 
 ```objc
-ZDString([NSString stringWithFormat:@"%@", host])
-ZDString(@"first" @"second")
+LMString([NSString stringWithFormat:@"%@", host])
+LMString(@"first" @"second")
 ```
 
-调用名当前要求精确匹配 `ZDString(`；不支持空格、换行或其他 token 变体。改写后会生成 `ZDStringID(0x...)`，因此 Swift 和 Objective-C target 都必须链接相应 Wrapper。
+调用名当前要求精确匹配 `LMString(`；不支持空格、换行或其他 token 变体。改写后会生成内部 `LMStringDecodeBytes(...)`，因此 Swift 和 Objective-C target 都必须链接相应 Wrapper。生成源码只保留 ID 的小端字节数组，不保留原始明文或注释。
 
 ### 4.3 Manifest
 

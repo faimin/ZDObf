@@ -17,7 +17,7 @@ FOUNDATION_EXPORT BOOL ZDStringProtectionInitializeEmbedded(NSData *key, NSError
 // Swift 直接使用这个无 Foundation 的 bootstrap ABI，返回值与 Rust Runtime 错误码一致。
 FOUNDATION_EXPORT uint32_t zd_string_runtime_init_embedded(const uint8_t *key, size_t key_length);
 
-// M1/M2 仅提供 ID 访问，源码字面量 API 留到源码扫描阶段。
-FOUNDATION_EXPORT NSString * _Nullable ZDStringID(uint64_t stringID);
+// Build-generated sources call this internal byte-token decoder; business code keeps LMString(...).
+FOUNDATION_EXPORT NSString * _Nullable LMStringDecodeBytes(const unsigned char *bytes, size_t length);
 
 NS_ASSUME_NONNULL_END

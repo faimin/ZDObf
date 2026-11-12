@@ -10,7 +10,7 @@ ZDObf 是一个面向 iOS 的字符串保护组件。它在构建阶段扫描 Sw
 Swift / Objective-C 源码
         │
         ├─ zdstring-gen scan
-        │    ├─ 生成只包含 ZDStringID(...) 的源码
+        │    ├─ 生成只包含 LMStringDecodeBytes(...) 的源码
         │    └─ 生成构建期明文 Manifest
         │
         ├─ zdstring-gen merge-manifests
@@ -25,7 +25,7 @@ ZDStringProtectionRuntime.xcframework + ZDStringProtection wrapper
                          └─ App 运行时初始化和按 ID 查询
 ```
 
-- **源码扫描**：`ZDString("...")` 和 `ZDString(@"...")` 只允许使用单个普通字符串字面量。扫描器把调用替换为 `ZDStringID(0x...)`，原始文件不参与编译。
+- **源码扫描**：`LMString("...")` 和 `LMString(@"...")` 只允许使用单个普通字符串字面量。扫描器把调用替换为内部 `LMStringDecodeBytes(...)`，原始文件不参与编译。
 - **加密目录**：Rust crypto core 使用 XChaCha20-Poly1305、HKDF 和 SHA-256 派生 ID、key、nonce 与 AAD，并校验完整 Manifest。
 - **Mach-O 嵌入**：构建脚本按 device/simulator 和架构生成 relocatable object，使用 `ld -sectcreate` 把 Blob 链接到最终 App。
 - **运行时查询**：wrapper 只把 Runtime callback 中的字节复制成 `String`/`NSString`，Runtime 返回后清理临时明文缓冲区。
@@ -133,7 +133,7 @@ printf '%s|%s|%s\n' \
 
 生成文件引用使用 `sourceTree = DERIVED_FILE_DIR`，例如 `path = ZDStringProtection/Sources/ProtectedAPI.swift`，并创建对应的 Compile Sources 条目；不要引用某台机器的 DerivedData 绝对路径。脚本 Output Files 至少声明两份生成源码及 `$(ZD_STRING_SECTION_OBJECT)`。首次接入可将 `ENABLE_USER_SCRIPT_SANDBOXING` 设为 `NO`；若开启，需要完整声明脚本读取和写入的文件。
 
-标记要求精确匹配 `ZDString(`；不支持插值、动态表达式、拼接、raw/multiline 参数或 Unicode 转义。支持普通 UTF-8、`\\`、`\"`、`\n`、`\r`、`\t`、`\0`。详细扫描限制见 `ZDStringProtection-技术方案.md`。
+标记要求精确匹配 `LMString(`；不支持插值、动态表达式、拼接、raw/multiline 参数或 Unicode 转义。支持普通 UTF-8、`\\`、`\"`、`\n`、`\r`、`\t`、`\0`。详细扫描限制见 `ZDStringProtection-技术方案.md`。
 
 ## 使用方法
 
@@ -144,8 +144,8 @@ import ZDStringProtection
 
 enum ProtectedAPI {
     static func userURL() -> String? {
-        // 构建阶段会把 ZDString 替换为 ZDStringID。
-        return ZDString("https://api.example.com/v1/user")
+        // 构建阶段会把 LMString 替换为内部 LMStringDecodeBytes。
+        return LMString("https://api.example.com/v1/user")
     }
 }
 ```
@@ -169,7 +169,7 @@ func prepareProtectedStrings(runtimeKey: Data) throws {
 #import <ZDStringProtection/ZDStringProtection.h>
 
 NSString * _Nullable ProtectedUserURL(void) {
-    return ZDString(@"https://api.example.com/v1/user");
+    return LMString(@"https://api.example.com/v1/user");
 }
 
 BOOL PrepareProtectedStrings(NSData *runtimeKey, NSError **error) {

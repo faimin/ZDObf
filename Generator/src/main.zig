@@ -163,13 +163,14 @@ fn run_scan(allocator: std.mem.Allocator, io: std.Io, args: []const []const u8) 
         const parsed = try parse_literal(source, token_start, arguments.language, allocator);
         try rewritten.appendSlice(allocator, source[cursor..token_start]);
         const id = string_id(arguments.namespace, parsed.text);
-        const replacement = try std.fmt.allocPrint(allocator, "ZDStringID(0x{x})", .{id});
+        const replacement = try build_decode_expression(allocator, id, arguments.language);
         try rewritten.appendSlice(allocator, replacement);
         try entries.append(allocator, .{ .text = parsed.text, .source = arguments.input_path });
         cursor = parsed.end;
     }
     try rewritten.appendSlice(allocator, source[cursor..]);
-    try write_output_atomically(allocator, io, arguments.output_path, rewritten.items);
+    const sanitized = try strip_comments(allocator, rewritten.items, arguments.language);
+    try write_output_atomically(allocator, io, arguments.output_path, sanitized);
     const manifest = try build_manifest_json(allocator, arguments.namespace, entries.items);
     try write_output_atomically(allocator, io, arguments.manifest_path, manifest);
 }
@@ -228,7 +229,7 @@ fn find_zd_string(source: []const u8, start: usize, language: []const u8) !?usiz
     while (index < source.len) {
         if (try skip_noncode(source, index, swift, 0)) |end| {
             index = end;
-        } else if (is_zd_string(source, index)) {
+        } else if (is_protected_string(source, index)) {
             return index;
         } else {
             index += 1;
@@ -237,8 +238,9 @@ fn find_zd_string(source: []const u8, start: usize, language: []const u8) !?usiz
     return null;
 }
 
-fn is_zd_string(source: []const u8, index: usize) bool {
-    return std.mem.startsWith(u8, source[index..], "ZDString(") and
+fn is_protected_string(source: []const u8, index: usize) bool {
+    return (std.mem.startsWith(u8, source[index..], "LMString(") or
+        std.mem.startsWith(u8, source[index..], "ZDString(")) and
         (index == 0 or !is_identifier_byte(source[index - 1]));
 }
 
@@ -421,7 +423,7 @@ fn skip_interpolation(source: []const u8, start: usize, depth: usize) anyerror!u
             index = end;
             continue;
         }
-        if (is_zd_string(source, index)) return error.UnsupportedLiteral;
+        if (is_protected_string(source, index)) return error.UnsupportedLiteral;
         if (source[index] == '(') nesting += 1;
         if (source[index] == ')') {
             nesting -= 1;
@@ -473,6 +475,60 @@ fn parse_literal(source: []const u8, token_start: usize, language: []const u8, a
         }
     }
     return error.UnsupportedLiteral;
+}
+
+fn build_decode_expression(allocator: std.mem.Allocator, id: u64, language: []const u8) ![]u8 {
+    var id_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &id_bytes, id, .little);
+    var output: std.ArrayList(u8) = .empty;
+    if (std.mem.eql(u8, language, "swift")) {
+        try output.appendSlice(allocator, "LMStringDecodeBytes(["[0..]);
+    } else {
+        try output.appendSlice(allocator, "LMStringDecodeBytes((const unsigned char[]){"[0..]);
+    }
+    for (id_bytes, 0..) |byte, index| {
+        if (index != 0) try output.appendSlice(allocator, ", "[0..]);
+        const encoded = try std.fmt.allocPrint(allocator, "0x{x:0>2}", .{byte});
+        try output.appendSlice(allocator, encoded);
+    }
+    if (std.mem.eql(u8, language, "swift")) {
+        try output.appendSlice(allocator, "])"[0..]);
+    } else {
+        try output.appendSlice(allocator, "}, 8)"[0..]);
+    }
+    return try output.toOwnedSlice(allocator);
+}
+
+fn strip_comments(allocator: std.mem.Allocator, source: []const u8, language: []const u8) ![]u8 {
+    const swift = std.mem.eql(u8, language, "swift");
+    var output: std.ArrayList(u8) = .empty;
+    var index: usize = 0;
+    while (index < source.len) {
+        if (std.mem.startsWith(u8, source[index..], "//")) {
+            const end = (try skip_noncode(source, index, swift, 0)) orelse return error.UnsupportedLiteral;
+            for (source[index..end]) |byte| {
+                if (byte == '\n' or byte == '\r') try output.append(allocator, byte);
+            }
+            index = end;
+            continue;
+        }
+        if (std.mem.startsWith(u8, source[index..], "/*")) {
+            const end = (try skip_noncode(source, index, swift, 0)) orelse return error.UnsupportedLiteral;
+            for (source[index..end]) |byte| {
+                if (byte == '\n' or byte == '\r') try output.append(allocator, byte);
+            }
+            index = end;
+            continue;
+        }
+        if (try skip_noncode(source, index, swift, 0)) |end| {
+            try output.appendSlice(allocator, source[index..end]);
+            index = end;
+        } else {
+            try output.append(allocator, source[index]);
+            index += 1;
+        }
+    }
+    return try output.toOwnedSlice(allocator);
 }
 
 fn string_id(namespace: []const u8, bytes: []const u8) u64 {

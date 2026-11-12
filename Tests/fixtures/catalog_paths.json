@@ -1,0 +1,12 @@
+{
+  "apiThanosImTokenGet": "/api/thanos/im/token/get",
+  "deviceIsBanned": "/device/isBanned",
+  "deviceSaveUserDeviceInfo": "/device/saveUserDeviceInfo",
+  "gameInviteAccept": "/game/invite/accept",
+  "gameInviteCheck": "/game/invite/check",
+  "gameInviteCreate": "/game/invite/create",
+  "gameInviteExit": "/game/invite/exit",
+  "gameInviteSend": "/game/invite/send",
+  "gameInviteStartGame": "/game/invite/startGame",
+  "gameMatchCancel": "/game/match/cancel"
+}

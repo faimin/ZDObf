@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "app_namespace": "com.example.zdstring.fixture",
+  "strings": [
+    {"text": "https://api.example.com/v1/user", "source": "Fixture.swift:1"},
+    {"text": "重复字符串", "source": "Fixture.swift:2"},
+    {"text": "重复字符串", "source": "Fixture.swift:3"},
+    {"text": "nul\u0000tail", "source": "Fixture.m:4"}
+  ]
+}

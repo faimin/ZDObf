@@ -1,0 +1,16 @@
+[package]
+name = "zd_string_crypto_cli"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "zdstring-crypto"
+path = "src/main.rs"
+
+[dependencies]
+zd_string_crypto_core = { path = "../crypto-core" }
+base64 = "0.22"
+getrandom = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

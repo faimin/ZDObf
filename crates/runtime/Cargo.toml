@@ -1,0 +1,12 @@
+[package]
+name = "zd_string_runtime"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+zd_string_crypto_core = { path = "../crypto-core" }
+zeroize = "1.9"

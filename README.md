@@ -73,6 +73,15 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 
 然后执行 `pod install`。Pod 只编译 Apple wrapper 并链接已准备好的 `dist/ZDObfRuntime.xcframework`，不会在安装或日常 App 构建时调用 Cargo。
 
+### 使用 GitHub Release 预构建包
+
+推送形如 `v0.1.0` 的 Git tag 后，`.github/workflows/release-xcframework.yml` 会在 macOS runner 上构建 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 全平台 slice，并通过 `softprops/action-gh-release@v3` 上传：
+
+- `ZDObfRuntime.xcframework.zip`
+- `ZDObfRuntime.xcframework.zip.sha256`
+
+下载 Release 中的 zip 后解压到仓库的 `dist/ZDObfRuntime.xcframework`，即可按上面的 CocoaPods 配置使用。`workflow_dispatch` 可以手动验证构建并取得 Actions artifact；只有 tag push 会创建或更新 Release assets。
+
 ## 构建工具和密钥
 
 ```sh

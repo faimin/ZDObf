@@ -22,9 +22,7 @@ fastlane/test_output
 /.swiftpm/
 /Generator/.zig-cache/
 /Generator/zig-out/
-/dist/*
-!/dist/ZDObfRuntime.xcframework/
-!/dist/ZDObfRuntime.xcframework/**
+/dist/
 /Tests/generated/
 __pycache__/
 

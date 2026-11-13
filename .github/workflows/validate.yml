@@ -47,6 +47,9 @@ jobs:
           print('CocoaPods specification is valid')
           PY
 
+      - name: Fetch pinned Runtime release
+        run: sh scripts/fetch_runtime.sh
+
       - name: Lint CocoaPods specification (iOS and macOS, dynamic frameworks)
         run: pod lib lint ZDObf.podspec --platforms=ios,osx
 

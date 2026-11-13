@@ -24,7 +24,6 @@ class SwiftPackageTests(unittest.TestCase):
         targets = {target["name"] for target in package["targets"]}
         self.assertEqual(products, {"ZDObfKit", "ZDObfKitObjC"})
         self.assertTrue({"ZDObfRuntime", "ZDObfKit", "ZDObfKitObjC"}.issubset(targets))
-        self.assertTrue((ROOT / "dist/ZDObfRuntime.xcframework/Info.plist").is_file())
 
     @unittest.skipUnless(shutil.which("xcrun"), "Runtime linking requires an Apple SDK")
     def test_swift_consumer_links_embedded_bootstrap_and_runtime(self):

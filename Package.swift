@@ -4,8 +4,8 @@ import PackageDescription
 
 // 预编译 Runtime 的发布固定值，由 scripts/pin_runtime_release.sh 在发布时改写；
 // 版本或 checksum 为空表示尚未固定到某个 GitHub Release。
-let runtimeReleaseVersion = ""
-let runtimeReleaseChecksum = ""
+let runtimeReleaseVersion = "0.1.0"
+let runtimeReleaseChecksum = "6ef27a368543bb88b01d5e49330181d51928fe491ff0f863fcbe1797bec5aff1"
 
 // 本地存在 dist/ZDObfRuntime.xcframework 时直接使用（开发、CI 构建、仓库内跟踪的产物）；
 // 设置 ZDOBF_USE_RELEASE_RUNTIME=1 可强制改用 Release 资产验证远程路径。

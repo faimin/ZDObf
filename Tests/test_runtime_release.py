@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,7 +22,11 @@ class RuntimeReleaseTests(unittest.TestCase):
         (sandbox / "scripts").mkdir(parents=True)
         (sandbox / "Apple/Swift").mkdir(parents=True)
         (sandbox / "Apple/ObjectiveC").mkdir(parents=True)
-        shutil.copy(ROOT / "Package.swift", sandbox / "Package.swift")
+        # 真实 Package.swift 已固定到某个 Release，这里清空固定值来模拟“尚未固定”的起点。
+        manifest = (ROOT / "Package.swift").read_text(encoding="utf-8")
+        manifest = re.sub(r'(?m)^let runtimeReleaseVersion = ".*"$', 'let runtimeReleaseVersion = ""', manifest)
+        manifest = re.sub(r'(?m)^let runtimeReleaseChecksum = ".*"$', 'let runtimeReleaseChecksum = ""', manifest)
+        (sandbox / "Package.swift").write_text(manifest, encoding="utf-8")
         for name in ("pin_runtime_release.sh", "fetch_runtime.sh"):
             shutil.copy(ROOT / "scripts" / name, sandbox / "scripts" / name)
         return sandbox

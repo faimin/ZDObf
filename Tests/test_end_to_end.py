@@ -50,6 +50,9 @@ int main(int argc, char **argv) {
 class EndToEndTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # dist/ 不入库：缺失时按 Package.swift 固定的 Release 资产下载并校验。
+        if not XCFRAMEWORK_MACOS.is_dir():
+            subprocess.run(["sh", str(ROOT / "scripts" / "fetch_runtime.sh")], check=True)
         subprocess.run([str(ZIG), "build"], cwd=ROOT / "Generator", check=True)
         subprocess.run(
             [CARGO, "build", "--locked", "-q", "-p", "zd_string_crypto_cli"],

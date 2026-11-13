@@ -45,7 +45,7 @@ scripts/                   Xcode Build Phase、XCFramework 和 Mach-O 脚本
 Tools/                     目录兼容访问器生成器
 Tests/                     Rust/Zig/Python/Apple 集成测试
 Package.swift              Swift Package Manager manifest
-dist/ZDObfRuntime.xcframework  可追踪的 Apple 平台 Runtime binary target
+dist/ZDObfRuntime.xcframework  本地构建或下载的 Runtime（不入库，见“固定 Release”）
 ZDObf.podspec             CocoaPods 规格
 ```
 
@@ -73,7 +73,7 @@ ZDObf.podspec             CocoaPods 规格
 pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 ```
 
-然后执行 `pod install`。Pod 只编译 Apple wrapper 并链接已准备好的 `dist/ZDObfRuntime.xcframework`，不会在安装或日常 App 构建时调用 Cargo。
+然后执行 `pod install`。Pod 只编译 Apple wrapper 并链接预编译的 Runtime：`dist/` 缺失时，`prepare_command` 会从固定的 GitHub Release 下载并校验 `ZDObfRuntime.xcframework`，不会在安装或日常 App 构建时调用 Cargo。
 
 ### 使用 GitHub Release 预构建包
 
@@ -82,7 +82,7 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 - `ZDObfRuntime.xcframework.zip`
 - `ZDObfRuntime.xcframework.zip.sha256`
 
-下载 Release 中的 zip 后解压到仓库的 `dist/ZDObfRuntime.xcframework`，即可按上面的 CocoaPods 配置使用。`workflow_dispatch` 可以手动验证构建并取得 Actions artifact；只有 tag push 会创建或更新 Release assets。
+`Package.swift` 和 podspec 都从 Release 资产获取 Runtime，通常无需手动下载；需要离线使用时可运行 `scripts/fetch_runtime.sh`。`workflow_dispatch` 可以手动验证构建并取得 Actions artifact；只有 tag push 会创建或更新 Release assets。
 
 构建脚本会用 `--remap-path-prefix` 去掉构建机的用户名和工具链路径；`arm64_32` 是 tier 3 目标，脚本会自动安装 nightly（含 `rust-src`）并用 `-Zbuild-std` 构建；构建结束前会断言每个切片的 `minos` 不高于声明的最低版本。Job Summary 会给出 zip 的 SHA-256 和固定命令。
 
@@ -94,7 +94,7 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 - 本地没有 `dist/` 且未固定 Release 时，`swift package` 会报出明确错误，而不是生成无效依赖。
 - Release 发布后，用 `scripts/pin_runtime_release.sh <版本> <zip>` 写入版本和 SHA-256，提交到 `main`。
 - `scripts/fetch_runtime.sh` 按固定值下载并校验 zip，解压到 `dist/`；`ZDObf.podspec` 的 `prepare_command` 在 `dist/` 缺失时自动调用它。
-- 完成第一次固定并验证后，才可以把 `dist/` 从 Git 中移除（`git rm -r --cached dist/ZDObfRuntime.xcframework` 并去掉 `.gitignore` 里的例外）。在此之前保持跟踪，否则按 tag 引入的使用者拿不到 Runtime。
+- 当前固定为 `v0.1.0`（`Package.swift` 里的 `runtimeReleaseVersion` / `runtimeReleaseChecksum`）。`dist/` 不再入库，由 `.gitignore` 忽略；发布新版本后重复“构建 → 上传 Release → `pin_runtime_release.sh`”。
 
 ### Swift Package Manager
 
@@ -111,7 +111,7 @@ dependencies: [
 ]
 ```
 
-在 target 中依赖产品 `ZDObfKit`；如果需要单独使用 Objective-C API，则依赖 `ZDObfKitObjC`。Swift 源码导入 `ZDObfKit`，Objective-C 源码导入 `<ZDObfKit/ZDObf.h>`。`Package.swift` 使用仓库内可追踪的 `dist/ZDObfRuntime.xcframework` binary target，因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。发布版本可以先从 GitHub Release 下载同名 XCFramework 覆盖 `dist/ZDObfRuntime.xcframework`，再通过本地包或 Git tag 引入。
+在 target 中依赖产品 `ZDObfKit`；如果需要单独使用 Objective-C API，则依赖 `ZDObfKitObjC`。Swift 源码导入 `ZDObfKit`，Objective-C 源码导入 `<ZDObfKit/ZDObf.h>`。`Package.swift` 的 binary target 指向固定的 GitHub Release 资产（URL + checksum），因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。本地存在 `dist/ZDObfRuntime.xcframework` 时优先使用它。
 
 ## 构建工具和密钥
 

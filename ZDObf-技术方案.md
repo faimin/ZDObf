@@ -101,7 +101,7 @@ ZDObf/
 │   ├── ObjectiveC/           section bootstrap 与 ObjC Wrapper
 │   └── Swift/                Swift Wrapper
 ├── Package.swift              Swift Package Manager manifest
-├── dist/ZDObfRuntime.xcframework  可追踪的 Apple 平台 Runtime binary target
+├── dist/ZDObfRuntime.xcframework  本地构建或下载的 Runtime（不入库）
 ├── scripts/                  XCFramework、Xcode、section、CI 脚本
 └── ZDObf.podspec
 ```
@@ -418,7 +418,7 @@ Rust Runtime 与 App Blob 分离。发布 Runtime 时执行：
 scripts/build_xcframework.sh
 ```
 
-它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。watchOS 真机切片 `watchos-arm64_arm64_32` 由 `aarch64-apple-watchos`（稳定版 Rust）与 `arm64_32-apple-watchos`（nightly + `-Zbuild-std=std,panic_unwind`，tier 3 目标）合并而成：64 位 arm64 的 watchOS 真机代码在 LLVM 中最低为 watchOS 26，声明的 watchOS 8 最低版本由 arm64_32 切片承担。构建脚本统一加 `--remap-path-prefix` 去掉构建机路径，并在输出前对每个切片逐个目标文件断言 `minos` 不高于声明值。`ZDObf.podspec` 使用 `ZDObfKit` 模块名，`Package.swift` 使用包名 `ZDObf`、Swift 模块名 `ZDObfKit` 和 Objective-C 模块名 `ZDObfKitObjC`，二者都引用仓库内可追踪的 `dist/ZDObfRuntime.xcframework`；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
+它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。watchOS 真机切片 `watchos-arm64_arm64_32` 由 `aarch64-apple-watchos`（稳定版 Rust）与 `arm64_32-apple-watchos`（nightly + `-Zbuild-std=std,panic_unwind`，tier 3 目标）合并而成：64 位 arm64 的 watchOS 真机代码在 LLVM 中最低为 watchOS 26，声明的 watchOS 8 最低版本由 arm64_32 切片承担。构建脚本统一加 `--remap-path-prefix` 去掉构建机路径，并在输出前对每个切片逐个目标文件断言 `minos` 不高于声明值。`ZDObf.podspec` 使用 `ZDObfKit` 模块名，`Package.swift` 使用包名 `ZDObf`、Swift 模块名 `ZDObfKit` 和 Objective-C 模块名 `ZDObfKitObjC`，二者都通过 `Package.swift` 里固定的 GitHub Release 资产（URL + SHA-256）获取 Runtime，本地存在 `dist/ZDObfRuntime.xcframework` 时优先使用；`dist/` 不入库；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
 
 ### 7.4 端到端接入示例
 

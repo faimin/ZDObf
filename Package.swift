@@ -61,6 +61,17 @@ let package = Package(
             cxxSettings: [
                 .headerSearchPath("../../crates/runtime/include")
             ]
+        ),
+        .testTarget(
+            name: "ZDObfKitTests",
+            dependencies: ["ZDObfKit"],
+            path: "Tests/ZDObfKitTests",
+            exclude: ["regenerate_fixture.py"]
+        ),
+        .testTarget(
+            name: "ZDObfKitObjCTests",
+            dependencies: ["ZDObfKitObjC"],
+            path: "Tests/ZDObfKitObjCTests"
         )
     ]
 )

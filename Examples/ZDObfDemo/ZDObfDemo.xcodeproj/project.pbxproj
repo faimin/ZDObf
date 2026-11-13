@@ -1,0 +1,388 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		33A3501E5E71B4A24E86DACC /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50995EBB7B0D51F8520A118 /* main.swift */; };
+		599175A91625D61DD2D5B7CE /* DemoKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8C908ED0CB5D37BAAB5F82 /* DemoKey.swift */; };
+		691354A144510890C1B24754 /* ZDObfKit in Frameworks */ = {isa = PBXBuildFile; productRef = 729CC918755CBE982E769C3C /* ZDObfKit */; };
+		AE6E895A5BA98070D95D24D7 /* ZDObfKitObjC in Frameworks */ = {isa = PBXBuildFile; productRef = 1FD6B1457B066402E8300553 /* ZDObfKitObjC */; };
+		C0D7B23DCE2F6A475FA55C13 /* ProtectedAPIObjC.m in Sources */ = {isa = PBXBuildFile; fileRef = D4BE9FC59250C610692E98E5 /* ProtectedAPIObjC.m */; };
+		D7F5C8C2528ACF3E715CDD4A /* ProtectedAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F524C1288B0513D8772275A /* ProtectedAPI.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1C94D4D7F3A19948F794471D /* ZDObf */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ZDObf; path = ../..; sourceTree = SOURCE_ROOT; };
+		3F524C1288B0513D8772275A /* ProtectedAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtectedAPI.swift; sourceTree = "<group>"; };
+		570BDDDD6FC79FB472C9ECB3 /* ZDObfDemo-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ZDObfDemo-Bridging-Header.h"; sourceTree = "<group>"; };
+		60D51F1DDBF1944C19336088 /* ProtectedAPIObjC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProtectedAPIObjC.h; sourceTree = "<group>"; };
+		A70C5E9DC074CFA009015351 /* ZDObfDemo */ = {isa = PBXFileReference; includeInIndex = 0; path = ZDObfDemo; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC8C908ED0CB5D37BAAB5F82 /* DemoKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoKey.swift; sourceTree = "<group>"; };
+		B50995EBB7B0D51F8520A118 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		D4BE9FC59250C610692E98E5 /* ProtectedAPIObjC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ProtectedAPIObjC.m; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5680F9888EBAE27DEAE900C8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				691354A144510890C1B24754 /* ZDObfKit in Frameworks */,
+				AE6E895A5BA98070D95D24D7 /* ZDObfKitObjC in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		37426632AA1DD25B52912984 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				1C94D4D7F3A19948F794471D /* ZDObf */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		77A18DEFA565B8C4F556E682 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A70C5E9DC074CFA009015351 /* ZDObfDemo */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8B423F632EC5D2A2EAC33EB8 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AC8C908ED0CB5D37BAAB5F82 /* DemoKey.swift */,
+				B50995EBB7B0D51F8520A118 /* main.swift */,
+				60D51F1DDBF1944C19336088 /* ProtectedAPIObjC.h */,
+				570BDDDD6FC79FB472C9ECB3 /* ZDObfDemo-Bridging-Header.h */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		9BE8A01E5A66F668DC6717BB = {
+			isa = PBXGroup;
+			children = (
+				8B423F632EC5D2A2EAC33EB8 /* App */,
+				AA36F7307700E67C8400B6AF /* Generated */,
+				37426632AA1DD25B52912984 /* Packages */,
+				77A18DEFA565B8C4F556E682 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA36F7307700E67C8400B6AF /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				3F524C1288B0513D8772275A /* ProtectedAPI.swift */,
+				D4BE9FC59250C610692E98E5 /* ProtectedAPIObjC.m */,
+			);
+			path = Generated;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		79E7D641258DC2338A0E4444 /* ZDObfDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48D1930D57A0710AAA8059C2 /* Build configuration list for PBXNativeTarget "ZDObfDemo" */;
+			buildPhases = (
+				8243D05A1F5295800162F13F /* ZDObf Protect Strings */,
+				E961729FD7F255C0BE8B2610 /* Sources */,
+				5680F9888EBAE27DEAE900C8 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ZDObfDemo;
+			packageProductDependencies = (
+				729CC918755CBE982E769C3C /* ZDObfKit */,
+				1FD6B1457B066402E8300553 /* ZDObfKitObjC */,
+			);
+			productName = ZDObfDemo;
+			productReference = A70C5E9DC074CFA009015351 /* ZDObfDemo */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		242CF395330ABB626F554D11 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = F7A23CFF2B9A09713C85041A /* Build configuration list for PBXProject "ZDObfDemo" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9BE8A01E5A66F668DC6717BB;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E43CC083B720094220B29F4D /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 77A18DEFA565B8C4F556E682 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				79E7D641258DC2338A0E4444 /* ZDObfDemo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		8243D05A1F5295800162F13F /* ZDObf Protect Strings */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/App/Protected/ProtectedAPI.swift",
+				"$(SRCROOT)/App/Protected/ProtectedAPIObjC.m",
+			);
+			name = "ZDObf Protect Strings";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Generated/ProtectedAPI.swift",
+				"$(SRCROOT)/Generated/ProtectedAPIObjC.m",
+				"$(ZD_STRING_SECTION_OBJECT)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "sh \"$SRCROOT/Scripts/zdobf_build_phase.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E961729FD7F255C0BE8B2610 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				599175A91625D61DD2D5B7CE /* DemoKey.swift in Sources */,
+				D7F5C8C2528ACF3E715CDD4A /* ProtectedAPI.swift in Sources */,
+				C0D7B23DCE2F6A475FA55C13 /* ProtectedAPIObjC.m in Sources */,
+				33A3501E5E71B4A24E86DACC /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A0F1E9C7CBD1BB7CA7B93499 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = "$(inherited) \"$(ZD_STRING_SECTION_OBJECT)\"";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				ZD_STRING_DERIVED_DIR = "$(DERIVED_FILE_DIR)/ZDObf";
+				ZD_STRING_NAMESPACE = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				ZD_STRING_SECTION_OBJECT = "$(ZD_STRING_DERIVED_DIR)/zdstring-section.o";
+			};
+			name = Release;
+		};
+		B1AAB3CD74A6BC83A6778C34 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = "$(inherited) \"$(ZD_STRING_SECTION_OBJECT)\"";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				ZD_STRING_DERIVED_DIR = "$(DERIVED_FILE_DIR)/ZDObf";
+				ZD_STRING_NAMESPACE = "$(PRODUCT_BUNDLE_IDENTIFIER)";
+				ZD_STRING_SECTION_OBJECT = "$(ZD_STRING_DERIVED_DIR)/zdstring-section.o";
+			};
+			name = Debug;
+		};
+		BB32BA48CD98D43AFE733DA3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.zdobf.demo;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "App/ZDObfDemo-Bridging-Header.h";
+			};
+			name = Release;
+		};
+		C0994A3A3D6A47D657C9C708 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.zdobf.demo;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "App/ZDObfDemo-Bridging-Header.h";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		48D1930D57A0710AAA8059C2 /* Build configuration list for PBXNativeTarget "ZDObfDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0994A3A3D6A47D657C9C708 /* Debug */,
+				BB32BA48CD98D43AFE733DA3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F7A23CFF2B9A09713C85041A /* Build configuration list for PBXProject "ZDObfDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1AAB3CD74A6BC83A6778C34 /* Debug */,
+				A0F1E9C7CBD1BB7CA7B93499 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		E43CC083B720094220B29F4D /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1FD6B1457B066402E8300553 /* ZDObfKitObjC */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ZDObfKitObjC;
+		};
+		729CC918755CBE982E769C3C /* ZDObfKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ZDObfKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 242CF395330ABB626F554D11 /* Project object */;
+}

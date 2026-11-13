@@ -1,0 +1,7 @@
+// 由 Tests/ZDObfKitTests/regenerate_fixture.py 生成，请勿手工修改。
+#import <Foundation/Foundation.h>
+
+static NSString *const kFixtureBlobBase64 = @"TE1TVAEAAQAAAAAADYTFHK+Xjal3BP6QMSl8vUhoF7q5fxDGSCsyO7tu2BIXAAAAAwAAAFcAAACTAAAAOgEAAGNvbS5leGFtcGxlLnpkb2JmLnRlc3RzajM7uydZyH6TAAAALwAAAAAAAAAiTXR8DRqqvNoAAAAQAAAAAAAAANpQjSpPhJ/cAgEAACAAAAAAAAAA1ITLYgWZdkAF7FQDec0VHgbhQT6KEbx8u6PNxE6oEKTqIWtVhN1Lh+lu9bqlO5LHaeZQpDrkdauKBjgrEDtGpmwbGip6Hyom4O5qqXyL2L8paO+5LLfs5h52Yg1EXRj5pwKXAE0dRdFX891iuWTMhOXZCFMihKx70e089EvPa58GJT0ETTdIANdubbV3n6FuPrq8ct2Xl1kLgx5lzDgqZW3KH4WpoSo=";
+static const uint64_t kFixtureUrlID = 0x7ec85927bb3b336aULL;
+static const uint64_t kFixtureUnicodeID = 0xdc9f844f2a8d50daULL;
+static const uint64_t kFixtureEmptyID = 0xbcaa1a0d7c744d22ULL;

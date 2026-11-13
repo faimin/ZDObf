@@ -43,11 +43,50 @@ crates/crypto-cli/         构建期加密 CLI
 Generator/                 Zig 源码扫描器和 Manifest 编排器
 scripts/                   Xcode Build Phase、XCFramework 和 Mach-O 脚本
 Tools/                     目录兼容访问器生成器
-Tests/                     Rust/Zig/Python/Apple 集成测试
+Examples/ZDObfDemo/        可运行的示例 Xcode 工程（Swift + Objective-C）
+Tests/                     Rust/Zig/Python/XCTest/端到端测试
 Package.swift              Swift Package Manager manifest
 dist/ZDObfRuntime.xcframework  本地构建或下载的 Runtime（不入库，见“固定 Release”）
 ZDObf.podspec             CocoaPods 规格
 ```
+
+## 快速开始
+
+最快的方式是跑一遍示例工程，它完整演示了“标记字符串 → 构建期加密 → 运行时解密”：
+
+```sh
+# 1. 构建 host 工具（Zig 扫描器 + Rust 加密 CLI，只需一次）
+Examples/ZDObfDemo/Scripts/bootstrap.sh
+
+# 2. 构建并运行（也可以 open Examples/ZDObfDemo/ZDObfDemo.xcodeproj 后直接 Run）
+xcodebuild -project Examples/ZDObfDemo/ZDObfDemo.xcodeproj -scheme ZDObfDemo \
+  -derivedDataPath /tmp/zdobf-demo build
+/tmp/zdobf-demo/Build/Products/Debug/ZDObfDemo
+```
+
+输出里的 URL、问候语和主机名都是运行时才解密出来的；用 `strings` 查看二进制找不到它们。接入自己的 App 只有四件事：
+
+1. **标记**：把需要保护的字面量写成 `ZDString("...")`（Swift）或 `ZDString(@"...")`（Objective-C）。
+2. **构建**：在 App target 加一个 Run Script Build Phase 调用 `scripts/xcode_build_phase.sh`，并把生成的源码和 section object 加进编译与链接（见“Xcode 接入”）。
+3. **初始化**：App 启动时调用一次 `ZDObf.initializeEmbedded(key:)`，key 必须与构建时的 `ZD_STRING_RUNTIME_KEY_B64` 相同。
+4. **使用**：之后正常访问包含 `ZDString(...)` 的代码。
+
+## 示例工程
+
+`Examples/ZDObfDemo` 是一个 macOS 命令行 App，用的配置与 iOS/tvOS/watchOS/visionOS App 相同（把平台和 `PLATFORM_NAME` 换成对应值即可）：
+
+| 路径 | 说明 |
+| --- | --- |
+| `App/Protected/ProtectedAPI.swift`、`ProtectedAPIObjC.m` | 含 `ZDString(...)` 的原始源码；**不参与编译** |
+| `Generated/`（构建时生成，已 gitignore） | Build Phase 生成的、只含 ID 的源码；**只有它们进入 Compile Sources** |
+| `App/main.swift` | 启动时初始化，然后使用受保护字符串；演示抛错查询 API |
+| `App/DemoKey.swift` | ⚠️ 仅用于 Demo 的固定 key，真实 App 不要这样做 |
+| `Scripts/zdobf_build_phase.sh` | 写 source-map 并调用 `scripts/xcode_build_phase.sh` |
+| `project.yml` | XcodeGen 配置；`xcodegen generate` 可重新生成 `.xcodeproj`（已提交，无需安装 XcodeGen） |
+
+工程里的关键设置与“Xcode 接入”一节一致：`ZD_STRING_NAMESPACE`、`ZD_STRING_DERIVED_DIR`、`ZD_STRING_SECTION_OBJECT`，`OTHER_LDFLAGS` 追加 section object，`ENABLE_USER_SCRIPT_SANDBOXING = NO`。依赖通过本地 Swift Package 引入（`ZDObfKit` 和 `ZDObfKitObjC`），Objective-C 里用 `@import ZDObfKitObjC;`。
+
+测试：`python3 -m unittest discover -s Tests -p test_demo.py` 会构建 Demo、运行它，并用 `scripts/verify_macho_artifact.sh` 断言二进制含 `__zdstring` section 且不含明文。
 
 ## 环境要求
 
@@ -61,30 +100,28 @@ ZDObf.podspec             CocoaPods 规格
 
 ## 安装
 
-先构建 Runtime XCFramework：
+Runtime 是预编译好的 `ZDObfRuntime.xcframework`，由 GitHub Release 提供，安装时不会调用 Cargo。
 
-```sh
-./scripts/build_xcframework.sh
-```
+### CocoaPods
 
-在 App target 对应的 Podfile 中添加：
+推荐直接用 Git tag（发布版本见 Releases）：
 
 ```ruby
-pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
+pod 'ZDObf', :git => 'https://github.com/faimin/ZDObf.git', :tag => 'v0.1.1'
 ```
 
-然后执行 `pod install`。Pod 只编译 Apple wrapper 并链接预编译的 Runtime：`dist/` 缺失时，`prepare_command` 会从固定的 GitHub Release 下载并校验 `ZDObfRuntime.xcframework`，不会在安装或日常 App 构建时调用 Cargo。
+`pod install` 时 podspec 的 `prepare_command` 会从固定的 GitHub Release 下载并校验 Runtime。Objective-C 源码导入 `<ZDObfKit/ZDObf.h>`，Swift 源码导入 `ZDObfKit`。
 
-### 使用 GitHub Release 预构建包
+> 本地开发用 `:path => '/absolute/path/to/ZDObf'` 时，CocoaPods **不会**对 `:path` Pod 执行 `prepare_command`。请先在仓库根目录运行一次 `scripts/fetch_runtime.sh`（或 `scripts/build_xcframework.sh` 自行构建），再 `pod install`。
 
-推送形如 `v0.1.0` 的 Git tag 后，`.github/workflows/release-xcframework.yml` 会在 macOS runner 上构建 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 全平台 slice，并通过 `softprops/action-gh-release@v3` 上传：
+### 发布与预构建包
 
-- `ZDObfRuntime.xcframework.zip`
-- `ZDObfRuntime.xcframework.zip.sha256`
+Runtime 通过手动触发的 `.github/workflows/release-xcframework.yml`（`workflow_dispatch`）发布，输入版本号如 `0.1.1`：
 
-`Package.swift` 和 podspec 都从 Release 资产获取 Runtime，通常无需手动下载；需要离线使用时可运行 `scripts/fetch_runtime.sh`。`workflow_dispatch` 可以手动验证构建并取得 Actions artifact；只有 tag push 会创建或更新 Release assets。
+- `publish=false`：只构建全平台 slice（iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS、Mac Catalyst）并上传 Actions artifact，用于演练。
+- `publish=true`（只允许在 `main` 上）：构建 → 把 `Package.swift` 固定到本次资产并同步 podspec 版本 → 提交 `release: vX.Y.Z` 到 `main` → 在该提交上创建 `vX.Y.Z` Release 并上传 `ZDObfRuntime.xcframework.zip` 和 `.sha256`。固定值提交先于 tag，所以每个 tag 的 `Package.swift` 指向它自己的 Runtime。
 
-构建脚本会用 `--remap-path-prefix` 去掉构建机的用户名和工具链路径；`arm64_32` 是 tier 3 目标，脚本会自动安装 nightly（含 `rust-src`）并用 `-Zbuild-std` 构建；构建结束前会断言每个切片的 `minos` 不高于声明的最低版本。Job Summary 会给出 zip 的 SHA-256 和固定命令。
+构建脚本会用 `--remap-path-prefix` 去掉构建机的用户名和工具链路径；`arm64_32` 是 tier 3 目标，脚本会自动安装 nightly（含 `rust-src`）并用 `-Zbuild-std` 构建；构建结束前会断言每个切片的 `minos` 不高于声明的最低版本。
 
 #### 固定 Release（URL + checksum）
 
@@ -92,9 +129,8 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 
 - `dist/ZDObfRuntime.xcframework` 存在时优先使用本地产物；设置 `ZDOBF_USE_RELEASE_RUNTIME=1` 可强制走 Release 资产。
 - 本地没有 `dist/` 且未固定 Release 时，`swift package` 会报出明确错误，而不是生成无效依赖。
-- Release 发布后，用 `scripts/pin_runtime_release.sh <版本> <zip>` 写入版本和 SHA-256，提交到 `main`。
-- `scripts/fetch_runtime.sh` 按固定值下载并校验 zip，解压到 `dist/`；`ZDObf.podspec` 的 `prepare_command` 在 `dist/` 缺失时自动调用它。
-- 当前固定为 `v0.1.0`（`Package.swift` 里的 `runtimeReleaseVersion` / `runtimeReleaseChecksum`）。`dist/` 不再入库，由 `.gitignore` 忽略；发布新版本后重复“构建 → 上传 Release → `pin_runtime_release.sh`”。
+- `scripts/pin_runtime_release.sh <版本> <zip>` 写入版本和 SHA-256（发布 workflow 自动调用）；`scripts/fetch_runtime.sh` 按固定值下载并校验 zip 到 `dist/`。
+- `dist/` 不入库（`.gitignore`）。SwiftPM 会缓存已解析的 manifest，本地 `dist/` 出现或消失后选择可能不更新：切换后运行 `swift package reset`（或 `rm -rf .build`）即可。
 
 ### Swift Package Manager
 
@@ -103,15 +139,14 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 - `ZDObfKit`：Swift 模块、Swift wrapper 和 `ZDObf.initializeEmbedded(key:)` API。
 - `ZDObfKitObjC`：Objective-C 模块、Objective-C wrapper 和 `ZDObfInitializeEmbedded(...)` API。
 
-本地开发或使用源码依赖时：
-
 ```swift
 dependencies: [
-    .package(path: "../ZDObf")
+    .package(url: "https://github.com/faimin/ZDObf.git", from: "0.1.1")
+    // 本地开发：.package(path: "../ZDObf")
 ]
 ```
 
-在 target 中依赖产品 `ZDObfKit`；如果需要单独使用 Objective-C API，则依赖 `ZDObfKitObjC`。Swift 源码导入 `ZDObfKit`，Objective-C 源码导入 `<ZDObfKit/ZDObf.h>`。`Package.swift` 的 binary target 指向固定的 GitHub Release 资产（URL + checksum），因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。本地存在 `dist/ZDObfRuntime.xcframework` 时优先使用它。
+在 target 中依赖产品 `ZDObfKit`；如果需要单独使用 Objective-C API，则依赖 `ZDObfKitObjC`。Swift 源码导入 `ZDObfKit`；Objective-C 源码用 `@import ZDObfKitObjC;`（SwiftPM 产品的模块名，头文件没有 `ZDObfKit/` 目录前缀，CocoaPods 才使用 `<ZDObfKit/ZDObf.h>`）。`Package.swift` 的 binary target 指向固定的 GitHub Release 资产（URL + checksum），因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。本地存在 `dist/ZDObfRuntime.xcframework` 时优先使用它。
 
 ## 构建工具和密钥
 
@@ -318,10 +353,9 @@ if (!ok) {
 
 ### 最小接入清单
 
-1. 构建 Runtime 和 host 工具：
+1. 构建 host 工具（Runtime 由 SwiftPM/CocoaPods 从 Release 获取，无需自己构建）：
 
    ```sh
-   ./scripts/build_xcframework.sh
    cargo build --locked --release -p zd_string_crypto_cli
    (cd Generator && zig build -Doptimize=ReleaseSafe)
    ```
@@ -386,9 +420,20 @@ python3 Tools/zdstring_catalog_codegen.py \
 
 ```sh
 cargo test --locked --workspace
-(cd Generator && zig build test && zig fmt --check src/main.zig)
-python3 -m unittest discover -s Tests -p 'test_*.py'
+(cd Generator && zig build test && zig fmt --check src)
+swift test                                            # ZDObfKit / ZDObfKitObjC 的 XCTest
+python3 -m unittest discover -s Tests -p 'test_*.py'  # 含端到端和 Demo 构建
 ```
+
+测试分层：
+
+| 测试 | 覆盖 |
+| --- | --- |
+| `cargo test` | Blob 格式、加解密、ID 固定向量、篡改/截断、C ABI 参数校验 |
+| `zig build test` | 扫描器词法规则、ID 派生与 Rust 的一致性 |
+| `swift test` | Swift 和 Objective-C API：未初始化、错误 key、篡改 Blob、单例、解码（固定 Blob 由 `Tests/ZDObfKitTests/regenerate_fixture.py` 生成） |
+| `Tests/test_end_to_end.py` | 扫描 → 加密 → 嵌入 → 链接（含动态库、Debug dylib 两种布局）→ 解密 |
+| `Tests/test_demo.py` | 构建并运行示例工程，断言无明文泄露 |
 
 验收最终 App 是否包含 section 且没有指定明文：
 

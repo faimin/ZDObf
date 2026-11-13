@@ -1,0 +1,57 @@
+# 用 XcodeGen 生成 ZDObfDemo.xcodeproj：xcodegen generate
+# 仓库里也提交了生成好的工程，没有安装 XcodeGen 时可以直接打开。
+name: ZDObfDemo
+options:
+  bundleIdPrefix: com.example.zdobf
+  deploymentTarget:
+    macOS: "15.0"
+packages:
+  ZDObf:
+    path: ../..
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CLANG_ENABLE_MODULES: YES
+    # 脚本要读取仓库外的工具和写入 Generated/，Demo 里直接关闭用户脚本沙盒；
+    # 开启沙盒时需要在 Run Script 里完整声明所有输入输出。
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CODE_SIGN_IDENTITY: "-"
+    # 与文档一致的三个构建变量；namespace 决定稳定 ID 的派生域。
+    ZD_STRING_NAMESPACE: $(PRODUCT_BUNDLE_IDENTIFIER)
+    ZD_STRING_DERIVED_DIR: $(DERIVED_FILE_DIR)/ZDObf
+    ZD_STRING_SECTION_OBJECT: $(ZD_STRING_DERIVED_DIR)/zdstring-section.o
+    # 把 Build Phase 生成的密文 section 链接进最终可执行文件。
+    OTHER_LDFLAGS: $(inherited) "$(ZD_STRING_SECTION_OBJECT)"
+targets:
+  ZDObfDemo:
+    type: tool
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - "Protected/**"
+      # 生成源码在 Build Phase 运行后才存在，所以标记为 optional。
+      - path: Generated/ProtectedAPI.swift
+        optional: true
+      - path: Generated/ProtectedAPIObjC.m
+        optional: true
+    dependencies:
+      - package: ZDObf
+        product: ZDObfKit
+      - package: ZDObf
+        product: ZDObfKitObjC
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.zdobf.demo
+        SWIFT_OBJC_BRIDGING_HEADER: App/ZDObfDemo-Bridging-Header.h
+    preBuildScripts:
+      - name: ZDObf Protect Strings
+        script: sh "$SRCROOT/Scripts/zdobf_build_phase.sh"
+        basedOnDependencyAnalysis: false
+        inputFiles:
+          - $(SRCROOT)/App/Protected/ProtectedAPI.swift
+          - $(SRCROOT)/App/Protected/ProtectedAPIObjC.m
+        outputFiles:
+          - $(SRCROOT)/Generated/ProtectedAPI.swift
+          - $(SRCROOT)/Generated/ProtectedAPIObjC.m
+          - $(ZD_STRING_SECTION_OBJECT)

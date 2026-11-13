@@ -70,6 +70,7 @@ jobs:
           print('Swift Package Manager manifest is valid')
           PY
           swift build
+          swift test
 
       - name: Validate component code
         run: |

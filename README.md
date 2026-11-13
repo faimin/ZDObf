@@ -68,7 +68,7 @@ xcodebuild -project Examples/ZDObfDemo/ZDObfDemo.xcodeproj -scheme ZDObfDemo \
 
 1. **标记**：把需要保护的字面量写成 `ZDString("...")`（Swift）或 `ZDString(@"...")`（Objective-C）。
 2. **构建**：在 App target 加一个 Run Script Build Phase 调用 `scripts/xcode_build_phase.sh`，并把生成的源码和 section object 加进编译与链接（见“Xcode 接入”）。
-3. **初始化**：App 启动时调用一次 `ZDObf.initializeEmbedded(key:)`，key 必须与构建时的 `ZD_STRING_RUNTIME_KEY_B64` 相同。
+3. **初始化**：App 启动时调用一次 `ZDObf.initializeEmbedded(key:)`，key 必须与构建时的 `ZD_STRING_RUNTIME_KEY_B64` 相同；想只在构建环境配置一处 key，可开启 `ZD_STRING_EMBED_KEY=1` 后无参调用 `ZDObf.initializeEmbedded()`（安全取舍见“内嵌 key 模式”，示例工程用的就是这种）。
 4. **使用**：之后正常访问包含 `ZDString(...)` 的代码。
 
 ## 示例工程
@@ -203,6 +203,8 @@ Runtime key 可以更换，但构建期和运行时必须同步使用同一份�
 3. 使用新 key 重新运行 App 的 `scripts/xcode_build_phase.sh`，让扫描器、加密 CLI 和 `__DATA,__zdstring` section 生成新的 Blob。
 4. 让新 App 启动时从同一密钥管理系统取得这份新 key，再调用 `ZDObf.initializeEmbedded(key:)` 或 `ZDObfInitializeEmbedded(...)`。
 5. 完成新的 App 构建并发布；旧 App 继续使用旧 key，新 App 使用新 key。
+
+开启了内嵌 key 模式时没有“运行时 key”这一份，换 key 只需改构建环境变量并重新构建（见上一节）。
 
 只更新运行时 key 而不重新生成 Blob，或只重新生成 Blob 而不更新运行时 key，都会导致 `authenticationFailed`。Runtime 初始化成功后，当前进程不能再次切换 key；如果需要旧 key 与新 key 在同一版本同时兼容，需要另外设计 key version 和多 key 迁移协议，当前实现不提供该能力。
 
@@ -384,8 +386,8 @@ if (!ok) {
 
 2. 在 App target 中把包含 `ZDString(...)` 的原始 Swift/Objective-C 文件移出 Compile Sources，保留它们作为 Build Phase 的输入。
 3. 让 Run Script 生成的 `$(ZD_STRING_DERIVED_DIR)/Sources/*.swift` 和 `*.m` 进入 Compile Sources，并把 `$(ZD_STRING_SECTION_OBJECT)` 加入 Other Linker Flags。
-4. 在构建环境注入同一份 32-byte `ZD_STRING_RUNTIME_KEY_B64`，然后运行 `scripts/xcode_build_phase.sh`。
-5. App 启动时先调用 `ZDObf.initializeEmbedded(key:)` 或 `ZDObfInitializeEmbedded(...)`，再访问包含 `ZDString(...)` 的业务函数。
+4. 在构建环境注入 32-byte `ZD_STRING_RUNTIME_KEY_B64`，然后运行 `scripts/xcode_build_phase.sh`。如需免去运行时传 key，同时设置 `ZD_STRING_EMBED_KEY=1`。
+5. App 启动时先调用 `ZDObf.initializeEmbedded(key:)` 或 `ZDObfInitializeEmbedded(...)`（内嵌 key 模式下改用无参的 `ZDObf.initializeEmbedded()` / `ZDObfInitializeEmbeddedWithBuiltInKey(&error)`），再访问包含 `ZDString(...)` 的业务函数。
 6. 构建完成后检查 section 和明文泄露：
 
    ```sh
@@ -469,7 +471,8 @@ scripts/verify_macho_artifact.sh \
 ## 限制与安全边界
 
 - Runtime 初始化只允许成功一次；成功后再次初始化返回 `alreadyInitialized`。
-- `ZDObfInitializeEmbedded` 通过 dyld 的主可执行文件镜像定位 `__DATA,__zdstring`，不会自动搜索 framework 或 dylib；wrapper 本身可以位于动态 framework 中。
+- `ZDObfInitializeEmbedded` 按 dyld 加载顺序查找第一个带 `__DATA,__zdstring` 的镜像（通常是主可执行文件；Xcode 的 Debug dylib 模式下是 `App.debug.dylib`）；wrapper 本身可以位于动态 framework 中。
+- 开启 `ZD_STRING_EMBED_KEY=1` 后，（经异或掩码的）key 与密文同在二进制里，只剩混淆强度的保护，详见“内嵌 key 模式”。
 - Blob 最大 64 MiB，单条 UTF-8 字符串最大 1 MiB，最多 1,000,000 条记录。
 - 原始 Manifest、映射 JSON 和构建 key 只应存在于构建环境，不应加入 Bundle 或公开 CI artifact。
 - 该方案降低静态字符串提取便利性，不能抵御调试、Hook、运行时内存读取或客户端 key 提取。

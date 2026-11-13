@@ -1,6 +1,6 @@
 # ZDObf
 
-ZDObf 是一个面向 iOS 的字符串保护组件。它在构建阶段扫描 Swift/Objective-C 源码，把受保护的字符串字面量替换成稳定 ID；随后使用 Rust 加密目录，将密文嵌入最终 App 可执行文件的 Mach-O `__DATA,__zdstring` section。运行时由 Swift 或 Objective-C wrapper 使用 32 字节 key 解密查询。
+ZDObf 是一个面向 Apple 平台的字符串保护组件。它在构建阶段扫描 Swift/Objective-C 源码，把受保护的字符串字面量替换成稳定 ID；随后使用 Rust 加密目录，将密文嵌入最终 App 可执行文件的 Mach-O `__DATA,__zdstring` section。运行时由 Swift 或 Objective-C wrapper 使用 32 字节 key 解密查询。
 
 组件降低静态提取客户端字符串的便利性。字符串在运行时仍会以明文出现在进程内存中，因此它不能替代服务端鉴权、密钥管理或反调试方案。
 
@@ -44,6 +44,8 @@ Generator/                 Zig 源码扫描器和 Manifest 编排器
 scripts/                   Xcode Build Phase、XCFramework 和 Mach-O 脚本
 Tools/                     目录兼容访问器生成器
 Tests/                     Rust/Zig/Python/Apple 集成测试
+Package.swift              Swift Package Manager manifest
+dist/ZDObfRuntime.xcframework  可追踪的 Apple 平台 Runtime binary target
 ZDObf.podspec             CocoaPods 规格
 ```
 
@@ -55,7 +57,7 @@ ZDObf.podspec             CocoaPods 规格
 - Python 3
 - CocoaPods 1.17 或兼容版本
 
-最低 iOS 13；arm64 模拟器最低 iOS 14。以下构建命令均在本仓库根目录执行。当前提供 CocoaPods 接入，尚未提供 SPM Package。
+最低平台版本为 iOS 15、macOS 15、tvOS 15、watchOS 8 和 visionOS 1；arm64 模拟器使用对应平台的最低模拟器版本。以下构建命令均在本仓库根目录执行。组件同时提供 CocoaPods 和 Swift Package Manager 接入。
 
 ## 安装
 
@@ -81,6 +83,23 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 - `ZDObfRuntime.xcframework.zip.sha256`
 
 下载 Release 中的 zip 后解压到仓库的 `dist/ZDObfRuntime.xcframework`，即可按上面的 CocoaPods 配置使用。`workflow_dispatch` 可以手动验证构建并取得 Actions artifact；只有 tag push 会创建或更新 Release assets。
+
+### Swift Package Manager
+
+本仓库的 `Package.swift` 提供两个产品：
+
+- `ZDObf`：Swift wrapper 和 `ZDObf.initializeEmbedded(key:)` API。
+- `ZDObfObjC`：Objective-C wrapper 和 `ZDObfInitializeEmbedded(...)` API。
+
+本地开发或使用源码依赖时：
+
+```swift
+dependencies: [
+    .package(path: "../ZDObf")
+]
+```
+
+在 target 中依赖 `ZDObf`；如果需要 Objective-C API，则依赖 `ZDObfObjC`。`Package.swift` 使用仓库内可追踪的 `dist/ZDObfRuntime.xcframework` binary target，因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。发布版本可以先从 GitHub Release 下载同名 XCFramework 覆盖 `dist/ZDObfRuntime.xcframework`，再通过本地包或 Git tag 引入。
 
 ## 构建工具和密钥
 

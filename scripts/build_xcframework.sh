@@ -9,6 +9,12 @@ HEADERS_DIR="$ROOT_DIR/crates/runtime/include"
 
 cd "$ROOT_DIR"
 
+export IPHONEOS_DEPLOYMENT_TARGET=15.0
+export MACOSX_DEPLOYMENT_TARGET=15.0
+export TVOS_DEPLOYMENT_TARGET=15.0
+export WATCHOS_DEPLOYMENT_TARGET=8.0
+export XROS_DEPLOYMENT_TARGET=1.0
+
 # Rust 1.99 stable 提供这些 Apple targets；rustup 对已安装 target 是幂等的。
 rustup target add \
     aarch64-apple-ios \

@@ -21,12 +21,57 @@ sdk=${ZD_STRING_SDK:-iphoneos}
 case "$sdk" in
     iphoneos)
         platform=ios
+        target_suffix="-apple-ios${IPHONEOS_DEPLOYMENT_TARGET:-15.0}"
+        minimum=${IPHONEOS_DEPLOYMENT_TARGET:-15.0}
         ;;
     iphonesimulator)
         platform=ios-simulator
+        minimum=${IPHONEOS_DEPLOYMENT_TARGET:-15.0}
+        target_suffix="-apple-ios${minimum}-simulator"
+        ;;
+    appletvos)
+        platform=tvos
+        minimum=${TVOS_DEPLOYMENT_TARGET:-15.0}
+        target_suffix="-apple-tvos${minimum}"
+        ;;
+    appletvsimulator)
+        platform=tvos-simulator
+        minimum=${TVOS_DEPLOYMENT_TARGET:-15.0}
+        target_suffix="-apple-tvos${minimum}-simulator"
+        ;;
+    watchos)
+        platform=watchos
+        minimum=${WATCHOS_DEPLOYMENT_TARGET:-8.0}
+        target_suffix="-apple-watchos${minimum}"
+        ;;
+    watchsimulator)
+        platform=watchos-simulator
+        minimum=${WATCHOS_DEPLOYMENT_TARGET:-8.0}
+        target_suffix="-apple-watchos${minimum}-simulator"
+        ;;
+    xros)
+        platform=xros
+        minimum=${XROS_DEPLOYMENT_TARGET:-1.0}
+        target_suffix="-apple-visionos${minimum}"
+        ;;
+    xrsimulator)
+        platform=xros-simulator
+        minimum=${XROS_DEPLOYMENT_TARGET:-1.0}
+        target_suffix="-apple-visionos${minimum}-simulator"
+        ;;
+    macosx)
+        if [ "${EFFECTIVE_PLATFORM_NAME:-}" = "-maccatalyst" ] || [ "${IS_MACCATALYST:-NO}" = "YES" ]; then
+            platform=mac-catalyst
+            minimum=${IPHONEOS_DEPLOYMENT_TARGET:-15.0}
+            target_suffix="-apple-ios${minimum}-macabi"
+        else
+            platform=macos
+            minimum=${MACOSX_DEPLOYMENT_TARGET:-15.0}
+            target_suffix="-apple-macos${minimum}"
+        fi
         ;;
     *)
-        printf 'Unsupported iOS SDK: %s\n' "$sdk" >&2
+        printf 'Unsupported Apple SDK: %s\n' "$sdk" >&2
         exit 64
         ;;
 esac
@@ -44,16 +89,11 @@ for target_arch in $arch; do
         arm64|arm64e|x86_64) ;;
         *) printf 'Unsupported architecture: %s\n' "$target_arch" >&2; exit 64 ;;
     esac
-    minimum=${IPHONEOS_DEPLOYMENT_TARGET:-13.0}
-    if [ "$sdk" = "iphonesimulator" ]; then
-        # Apple Silicon Simulator 自 iOS 14 起可用，避免 stub 与 ld 的最低版本不一致。
-        if [ "$target_arch" = "arm64" ] && [ "${minimum%%.*}" -lt 14 ]; then
-            minimum=14.0
-        fi
-        target="${target_arch}-apple-ios${minimum}-simulator"
-    else
-        target="${target_arch}-apple-ios${minimum}"
+    if [ "$sdk" = "iphonesimulator" ] && [ "$target_arch" = "arm64" ] && [ "${minimum%%.*}" -lt 14 ]; then
+        minimum=14.0
+        target_suffix="-apple-ios${minimum}-simulator"
     fi
+    target="${target_arch}${target_suffix}"
     stub="$temporary_dir/$target_arch-stub.o"
     section="$temporary_dir/$target_arch.o"
     "$clang_path" -target "$target" -isysroot "$sdk_path" -c -x c /dev/null -o "$stub"

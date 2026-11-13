@@ -1,7 +1,7 @@
 Pod::Spec.new do |spec|
   spec.name             = 'ZDObf'
   spec.version          = '0.1.0'
-  spec.summary          = 'Mach-O embedded encrypted string runtime for iOS.'
+  spec.summary          = 'Mach-O embedded encrypted string runtime for Apple platforms.'
   spec.description      = <<-DESC
     Provides the Objective-C and Swift wrappers for a prebuilt Rust runtime.
     App-specific encrypted string data is generated during the App build and
@@ -12,7 +12,11 @@ Pod::Spec.new do |spec|
   spec.homepage         = 'https://github.com/faimin/ZDObf'
   spec.source           = { :git => 'https://github.com/faimin/ZDObf.git', :tag => spec.version.to_s }
 
-  spec.ios.deployment_target = '13.0'
+  spec.ios.deployment_target = '15.0'
+  spec.osx.deployment_target = '15.0'
+  spec.tvos.deployment_target = '15.0'
+  spec.watchos.deployment_target = '8.0'
+  spec.visionos.deployment_target = '1.0'
   spec.module_name = spec.name
   spec.source_files = 'Apple/**/*.{h,mm,swift}'
   spec.public_header_files = 'Apple/ObjectiveC/*.h'

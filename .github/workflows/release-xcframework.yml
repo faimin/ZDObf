@@ -22,6 +22,9 @@ jobs:
       - name: Build all Apple platform slices
         run: ./scripts/build_xcframework.sh
 
+      - name: Validate Swift Package Manager integration
+        run: swift build
+
       - name: Package XCFramework
         run: |
           ditto -c -k --sequesterRsrc --keepParent \

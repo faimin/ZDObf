@@ -83,8 +83,19 @@ fi
 "$generator" "$@"
 
 case "${PLATFORM_NAME:-iphoneos}" in
-    *simulator*) sdk=iphonesimulator ;;
-    *) sdk=iphoneos ;;
+    iphoneos) sdk=iphoneos ;;
+    iphonesimulator) sdk=iphonesimulator ;;
+    appletvos) sdk=appletvos ;;
+    appletvsimulator) sdk=appletvsimulator ;;
+    watchos) sdk=watchos ;;
+    watchsimulator) sdk=watchsimulator ;;
+    xros) sdk=xros ;;
+    xrsimulator) sdk=xrsimulator ;;
+    macosx) sdk=macosx ;;
+    *)
+        printf 'Unsupported Apple platform: %s\n' "${PLATFORM_NAME:-}" >&2
+        exit 64
+        ;;
 esac
 # 共享 Build Phase 的 CURRENT_ARCH 可能是占位值，此时必须保留 ARCHS 的全部 slice。
 arch=${ZD_STRING_ARCH:-${CURRENT_ARCH:-}}

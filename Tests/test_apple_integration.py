@@ -35,9 +35,17 @@ class AppleIntegrationTests(unittest.TestCase):
     def test_embedded_section_links_into_each_apple_platform(self):
         # 必须真正链接 device/simulator 可执行文件，不能只检查 .o 是否包含 section。
         cases = [
-            ("iphoneos", "arm64", "arm64-apple-ios13.0", "IOS"),
-            ("iphonesimulator", "arm64", "arm64-apple-ios14.0-simulator", "IOSSIMULATOR"),
-            ("iphonesimulator", "x86_64", "x86_64-apple-ios13.0-simulator", "IOSSIMULATOR"),
+            ("iphoneos", "arm64", "arm64-apple-ios15.0", "IOS"),
+            ("iphonesimulator", "arm64", "arm64-apple-ios15.0-simulator", "IOSSIMULATOR"),
+            ("iphonesimulator", "x86_64", "x86_64-apple-ios15.0-simulator", "IOSSIMULATOR"),
+            ("macosx", "arm64", "arm64-apple-macos15.0", "MACOS"),
+            ("macosx", "x86_64", "x86_64-apple-macos15.0", "MACOS"),
+            ("appletvos", "arm64", "arm64-apple-tvos15.0", "TVOS"),
+            ("appletvsimulator", "arm64", "arm64-apple-tvos15.0-simulator", "TVOSSIMULATOR"),
+            ("watchos", "arm64", "arm64-apple-watchos8.0", "WATCHOS"),
+            ("watchsimulator", "arm64", "arm64-apple-watchos8.0-simulator", "WATCHOSSIMULATOR"),
+            ("xros", "arm64", "arm64-apple-visionos1.0", "VISIONOS"),
+            ("xrsimulator", "arm64", "arm64-apple-visionos1.0-simulator", "VISIONOSSIMULATOR"),
         ]
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
@@ -72,6 +80,22 @@ class AppleIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(set(self.run_command(["xcrun", "lipo", "-archs", str(section)]).split()),
                              {"arm64", "x86_64"})
+
+    def test_embedded_section_supports_mac_catalyst(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            blob = temporary / "blob"
+            blob.write_bytes(b"LMST-test-section")
+            section = temporary / "maccatalyst.o"
+            self.run_command(
+                [str(ROOT / "scripts/embed_macho_section.sh"), str(blob), str(section), "arm64"],
+                env={
+                    **os.environ,
+                    "ZD_STRING_SDK": "macosx",
+                    "EFFECTIVE_PLATFORM_NAME": "-maccatalyst",
+                },
+            )
+            self.assertEqual(self.run_command(["xcrun", "lipo", "-archs", str(section)]).strip(), "arm64")
 
 
 if __name__ == "__main__":

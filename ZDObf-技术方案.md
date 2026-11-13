@@ -6,7 +6,7 @@
 
 - 组件目录：`ZDObf/`
 - 首次交付：Rust Runtime、加密核心、Rust CLI、Zig Generator、Apple Wrapper、XCFramework 构建。
-- 当前交付：Mach-O section 注入、受限字面量扫描、Xcode 编排脚本、CocoaPods 规格和 CI 验收脚本。
+- 当前交付：Mach-O section 注入、受限字面量扫描、Xcode 编排脚本、CocoaPods 规格、Swift Package Manager 包和 CI 验收脚本。
 - 独立性：不依赖原业务仓库或旧字符串混淆组件。
 
 本文明确区分已实现能力与后续演进，避免把设计目标误认为当前功能。
@@ -100,6 +100,8 @@ ZDObf/
 ├── Apple/
 │   ├── ObjectiveC/           section bootstrap 与 ObjC Wrapper
 │   └── Swift/                Swift Wrapper
+├── Package.swift              Swift Package Manager manifest
+├── dist/ZDObfRuntime.xcframework  可追踪的 Apple 平台 Runtime binary target
 ├── scripts/                  XCFramework、Xcode、section、CI 脚本
 └── ZDObf.podspec
 ```
@@ -322,7 +324,7 @@ Release 若选择 deterministic，必须提供 `--build-salt-b64` 或 `ZD_STRING
 scripts/embed_macho_section.sh <strings.zdstr> <zdstring-section.o> [arch]
 ```
 
-脚本根据 `ZD_STRING_SDK=iphoneos|iphonesimulator` 选择 SDK，以显式 target/sysroot 编译临时 object，并指定链接平台：
+脚本根据 `ZD_STRING_SDK` 选择 Apple SDK，以显式 target/sysroot 编译临时 object，并指定链接平台。当前支持 `iphoneos`、`iphonesimulator`、`appletvos`、`appletvsimulator`、`watchos`、`watchsimulator`、`xros`、`xrsimulator` 和 `macosx`；Mac Catalyst 通过 `EFFECTIVE_PLATFORM_NAME=-maccatalyst` 使用 `ios-macabi` target：
 
 ```sh
 clang -target <arch-apple-ios-version[-simulator]> -isysroot <sdk-path> -c -x c /dev/null -o <temporary-empty-object>
@@ -331,7 +333,7 @@ ld -r -arch <arch> -platform_version <ios|ios-simulator> <minimum> <sdk-version>
 
 生成 object。临时空 object 仅满足 `ld -r` 的输入要求，不含业务数据。最终 object 必须进入 App 的链接输入；不能将 `.zdstr` 作为 Copy Bundle Resources。
 
-最低版本跟随 `IPHONEOS_DEPLOYMENT_TARGET`，默认 iOS 13；arm64 模拟器至少 iOS 14。架构参数支持带引号的空格分隔列表，各架构分别生成后由 `lipo` 合并。共享构建阶段若收到 `CURRENT_ARCH=undefined_arch`，会回退到完整 `ARCHS`，也可用 `ZD_STRING_ARCH` 显式覆盖。ObjC 公共头仅依赖系统类型，Rust ABI 头仅由 `.mm` 实现引入，兼容 Pod 符号链接和 framework 复制布局。
+最低版本默认跟随各平台设置：iOS 15、macOS 15、tvOS 15、watchOS 8 和 visionOS 1。架构参数支持带引号的空格分隔列表，各架构分别生成后由 `lipo` 合并。共享构建阶段若收到 `CURRENT_ARCH=undefined_arch`，会回退到完整 `ARCHS`，也可用 `ZD_STRING_ARCH` 显式覆盖。ObjC 公共头仅依赖系统类型，Rust ABI 头仅由 `.mm` 实现引入，兼容 Pod 符号链接、SPM binary target 和 framework 复制布局。
 
 可使用以下命令检查：
 
@@ -405,7 +407,7 @@ ZD_STRING_SECTION_OBJECT = $(DERIVED_FILE_DIR)/ZDObf/zdstring-section.o
 
 可选变量：`ZD_STRING_GENERATOR`、`ZD_STRING_CRYPTO_CLI`、`ZD_STRING_PROFILE`、`ZD_STRING_SDK`、`ZD_STRING_ARCH`。脚本会以 `CONFIGURATION=Release` 自动选择 `profile=release` 和 random nonce，除非显式覆盖。
 
-### 7.3 XCFramework 与 CocoaPods
+### 7.3 XCFramework、CocoaPods 与 SwiftPM
 
 Rust Runtime 与 App Blob 分离。发布 Runtime 时执行：
 
@@ -413,7 +415,7 @@ Rust Runtime 与 App Blob 分离。发布 Runtime 时执行：
 scripts/build_xcframework.sh
 ```
 
-它生成 Device `arm64` 与 Simulator `arm64 + x86_64` 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 只引用发布流程预构建的 XCFramework；Pod 安装、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。
+它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 和 `Package.swift` 都引用仓库内可追踪的 `dist/ZDObfRuntime.xcframework`；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
 
 ### 7.4 端到端接入示例
 

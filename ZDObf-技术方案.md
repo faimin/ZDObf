@@ -111,7 +111,7 @@ ZDObf/
 `crates/crypto-core` 是唯一的密码学和 Blob 格式来源，Generator 与 Runtime 不重复实现这些规则。它负责：
 
 - `LMST` v1 Blob 的创建和严格解析。
-- SHA-256 稳定 ID。
+- 由构建 key 经 HKDF-SHA256 派生的稳定 ID（目录模式为 SHA-256 无密钥 ID）。
 - HKDF-SHA256 派生每条记录的 32-byte key。
 - XChaCha20-Poly1305 加密、解密与 AAD 认证。
 - 确定性或随机 24-byte nonce。
@@ -163,7 +163,7 @@ BOOL ZDObfInitializeEmbedded(NSData *key, NSError **error);
 NSString * _Nullable ZDStringDecodeBytes(const unsigned char *bytes, size_t length);
 ```
 
-`ZDObfInitializeEmbedded` 通过 `getsectiondata(&_mh_execute_header, "__DATA", "__zdstring", ...)` 找到最终可执行文件的密文 section，再将 pointer、length 和 key 传给 Rust。定位 Mach-O 的平台代码停留在 Apple Wrapper；Rust 仍是纯运行时库。
+`ZDObfInitializeEmbedded` 通过 `getsectiondata(_dyld_get_image_header(0), "__DATA", "__zdstring", ...)` 找到最终可执行文件的密文 section，再将 pointer、length 和 key 传给 Rust。定位 Mach-O 的平台代码停留在 Apple Wrapper；Rust 仍是纯运行时库。
 
 Swift Wrapper 提供：
 
@@ -182,16 +182,17 @@ Swift 通过同步 callback 复制为 `String`；全局 `ZDStringDecodeBytes` �
 
 ### 4.1 稳定 ID
 
-每条字符串的 ID 为下列输入的 SHA-256 摘要前 8 bytes 按 little-endian 解释得到的 `u64`：
+扫描得到的每条字符串，其 ID 由构建 key 派生：`HKDF-SHA256(salt = "LMStringProtection/id/v2", ikm = runtime key)`，以下列 `info` 展开 8 bytes 并按 little-endian 解释为 `u64`：
 
 ```text
-"LMStringProtection/id/v1"
-+ namespace_length 的 u16 little-endian 编码
+namespace_length 的 u16 little-endian 编码
 + app_namespace UTF-8 bytes
 + 字符串 UTF-8 bytes
 ```
 
-因此相同字符串在不同 namespace 下具有不同 ID；每个 App 应将 namespace 设置为稳定且独有的标识，通常是 `$(PRODUCT_BUNDLE_IDENTIFIER)`。
+因此相同字符串在不同 namespace 或不同 key 下具有不同 ID；每个 App 应将 namespace 设置为稳定且独有的标识，通常是 `$(PRODUCT_BUNDLE_IDENTIFIER)`。ID 同时出现在 Blob index 和调用点字节中，由于派生需要 key，攻击者无法在不持有 key 的情况下离线验证对某个 URL 或口令的猜测。`zdstring-gen scan` 与 crypto CLI 都从 `ZD_STRING_RUNTIME_KEY_B64` 读取 key，缺失或长度错误时扫描失败，不会退化为无密钥 ID。Rust（`string_id`）与 Zig（`string_id`）必须保持逐字节一致，两侧和 Python 测试共享同一组固定向量。
+
+目录兼容模式的 ID 是 `SHA-256("LMStringProtection/catalog-id/v1" || 路径)` 的前 8 bytes，不含 key 也不含 namespace：访问器在 Pod 编译期固化 ID，此时没有 App key。该模式的 ID 因此可被离线验证，仅适合不敏感的路径类字符串。
 
 Blob 构建时将记录按 ID 排序并去重。相同 ID 但不同明文会使构建失败，绝不静默选择其中之一。
 
@@ -415,7 +416,7 @@ Rust Runtime 与 App Blob 分离。发布 Runtime 时执行：
 scripts/build_xcframework.sh
 ```
 
-它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 使用 `ZDObfKit` 模块名，`Package.swift` 使用包名 `ZDObf`、Swift 模块名 `ZDObfKit` 和 Objective-C 模块名 `ZDObfKitObjC`，二者都引用仓库内可追踪的 `dist/ZDObfRuntime.xcframework`；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
+它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。watchOS 真机切片 `watchos-arm64_arm64_32` 由 `aarch64-apple-watchos`（稳定版 Rust）与 `arm64_32-apple-watchos`（nightly + `-Zbuild-std=std,panic_unwind`，tier 3 目标）合并而成：64 位 arm64 的 watchOS 真机代码在 LLVM 中最低为 watchOS 26，声明的 watchOS 8 最低版本由 arm64_32 切片承担。构建脚本统一加 `--remap-path-prefix` 去掉构建机路径，并在输出前对每个切片逐个目标文件断言 `minos` 不高于声明值。`ZDObf.podspec` 使用 `ZDObfKit` 模块名，`Package.swift` 使用包名 `ZDObf`、Swift 模块名 `ZDObfKit` 和 Objective-C 模块名 `ZDObfKitObjC`，二者都引用仓库内可追踪的 `dist/ZDObfRuntime.xcframework`；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
 
 ### 7.4 端到端接入示例
 

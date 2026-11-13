@@ -26,7 +26,7 @@ ZDObfRuntime.xcframework + ZDObfKit wrapper
 ```
 
 - **源码扫描**：`ZDString("...")` 和 `ZDString(@"...")` 只允许使用单个普通字符串字面量。扫描器把调用替换为内部 `ZDStringDecodeBytes(...)`，原始文件不参与编译。
-- **加密目录**：Rust crypto core 使用 XChaCha20-Poly1305、HKDF 和 SHA-256 派生 ID、key、nonce 与 AAD，并校验完整 Manifest。
+- **加密目录**：Rust crypto core 使用 XChaCha20-Poly1305、HKDF 和 SHA-256 派生 ID、key、nonce 与 AAD，初始化时逐条认证全部记录，任何篡改或错误 key 都会使初始化失败。
 - **Mach-O 嵌入**：构建脚本按 device/simulator 和架构生成 relocatable object，使用 `ld -sectcreate` 把 Blob 链接到最终 App。
 - **运行时查询**：wrapper 只把 Runtime callback 中的字节复制成 `String`/`NSString`，Runtime 返回后清理临时明文缓冲区。
 
@@ -57,7 +57,7 @@ ZDObf.podspec             CocoaPods 规格
 - Python 3
 - CocoaPods 1.17 或兼容版本
 
-最低平台版本为 iOS 15、macOS 15、tvOS 15、watchOS 8 和 visionOS 1；arm64 模拟器使用对应平台的最低模拟器版本。以下构建命令均在本仓库根目录执行。组件同时提供 CocoaPods 和 Swift Package Manager 接入。
+最低平台版本为 iOS 15、macOS 15、tvOS 15、watchOS 8 和 visionOS 1；arm64 模拟器使用对应平台的最低模拟器版本。watchOS 真机切片同时包含 `arm64_32`（Series 4–8、SE 1 等 32 位指针设备，最低 watchOS 8）和 `arm64`（64 位设备，LLVM 对其最低要求为 watchOS 26）。以下构建命令均在本仓库根目录执行。组件同时提供 CocoaPods 和 Swift Package Manager 接入。
 
 ## 安装
 
@@ -83,6 +83,18 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 - `ZDObfRuntime.xcframework.zip.sha256`
 
 下载 Release 中的 zip 后解压到仓库的 `dist/ZDObfRuntime.xcframework`，即可按上面的 CocoaPods 配置使用。`workflow_dispatch` 可以手动验证构建并取得 Actions artifact；只有 tag push 会创建或更新 Release assets。
+
+构建脚本会用 `--remap-path-prefix` 去掉构建机的用户名和工具链路径；`arm64_32` 是 tier 3 目标，脚本会自动安装 nightly（含 `rust-src`）并用 `-Zbuild-std` 构建；构建结束前会断言每个切片的 `minos` 不高于声明的最低版本。Job Summary 会给出 zip 的 SHA-256 和固定命令。
+
+#### 固定 Release（URL + checksum）
+
+`Package.swift` 顶部的 `runtimeReleaseVersion` / `runtimeReleaseChecksum` 决定远程 binaryTarget：
+
+- `dist/ZDObfRuntime.xcframework` 存在时优先使用本地产物；设置 `ZDOBF_USE_RELEASE_RUNTIME=1` 可强制走 Release 资产。
+- 本地没有 `dist/` 且未固定 Release 时，`swift package` 会报出明确错误，而不是生成无效依赖。
+- Release 发布后，用 `scripts/pin_runtime_release.sh <版本> <zip>` 写入版本和 SHA-256，提交到 `main`。
+- `scripts/fetch_runtime.sh` 按固定值下载并校验 zip，解压到 `dist/`；`ZDObf.podspec` 的 `prepare_command` 在 `dist/` 缺失时自动调用它。
+- 完成第一次固定并验证后，才可以把 `dist/` 从 Git 中移除（`git rm -r --cached dist/ZDObfRuntime.xcframework` 并去掉 `.gitignore` 里的例外）。在此之前保持跟踪，否则按 tag 引入的使用者拿不到 Runtime。
 
 ### Swift Package Manager
 
@@ -344,17 +356,18 @@ python3 Tools/zdstring_catalog_codegen.py \
 
 映射格式为“合法标识符 → 非空字符串”。把生成文件加入访问器 target，并让该 target 依赖 `ZDObf`；然后在 App Build Settings 中设置 `ZD_STRING_CATALOG_MAPPING = /absolute/path/to/catalog.json`。仅目录模式运行 `"$library_dir/scripts/xcode_build_phase.sh"`，不传 source-map；仍需配置 namespace、key、链接 object 和 Runtime 初始化。映射变化后，重新生成访问器和 App Blob。
 
-目录访问器查询失败时返回空字符串，应先初始化并在请求边界检查空值。目录 ID 不依赖 App namespace；普通扫描 ID 依赖 namespace，修改 namespace 后必须同时重新生成源码和 Blob。
+目录访问器查询失败时返回空字符串，应先初始化并在请求边界检查空值。目录 ID 不依赖 App namespace；普通扫描 ID 依赖 namespace 和 key，修改其中任何一个后必须同时重新生成源码和 Blob。
 
 ## 构建配置与排错
 
 | 变量 | 默认值或用途 |
 | --- | --- |
-| `ZD_STRING_RUNTIME_KEY_B64` | 必填；Base64 解码后 32 bytes |
+| `ZD_STRING_RUNTIME_KEY_B64` | 必填；Base64 解码后 32 bytes。扫描阶段也用它派生稳定 ID，缺失时扫描失败 |
 | `ZD_STRING_NAMESPACE` | 默认 `PRODUCT_BUNDLE_IDENTIFIER` |
 | `ZD_STRING_GENERATOR` / `ZD_STRING_CRYPTO_CLI` | 默认本仓库内构建的 host 工具 |
 | `ZD_STRING_CATALOG_MAPPING` | 可选；目录模式 JSON |
 | `ZD_STRING_PROFILE` / `ZD_STRING_NONCE_MODE` | Debug 为 `debug` / `deterministic`；Release 为 `release` / `random` |
+| `ZD_STRING_KEEP_MANIFESTS` | 设为 `1` 时保留含明文的中间 Manifest（权限 0600）；默认构建结束后删除 |
 | `ZD_STRING_BUILD_SALT_B64` | 可选；确定性 Release 必填，解码后 32 bytes |
 | `ZD_STRING_ARCH` | 可选；覆盖自动选择的架构或架构列表 |
 
@@ -388,8 +401,23 @@ scripts/verify_macho_artifact.sh \
 ## 限制与安全边界
 
 - Runtime 初始化只允许成功一次；成功后再次初始化返回 `alreadyInitialized`。
-- `ZDObfInitializeEmbedded` 只从主可执行文件定位 `__DATA,__zdstring`，不会自动搜索 framework 或 dylib。
+- `ZDObfInitializeEmbedded` 通过 dyld 的主可执行文件镜像定位 `__DATA,__zdstring`，不会自动搜索 framework 或 dylib；wrapper 本身可以位于动态 framework 中。
 - Blob 最大 64 MiB，单条 UTF-8 字符串最大 1 MiB，最多 1,000,000 条记录。
 - 原始 Manifest、映射 JSON 和构建 key 只应存在于构建环境，不应加入 Bundle 或公开 CI artifact。
 - 该方案降低静态字符串提取便利性，不能抵御调试、Hook、运行时内存读取或客户端 key 提取。
-- 为保持已有 Blob 和 ID 兼容，内部 magic `LMST` 与 `LMStringProtection/...` 派生域保留原始字节值；文件名、公开类型、函数、构建变量和工具均使用 `ZD` 前缀。
+- 普通扫描的稳定 ID 由构建 key 派生，不持有 key 无法离线验证猜测的明文；目录兼容模式的 ID 是无密钥哈希（Pod 编译期固化），可被离线验证，不要用它保护低熵敏感字符串。
+- 为保持已有 Blob 格式兼容，内部 magic `LMST` 与 `LMStringProtection/...` 派生域保留原始字节值；文件名、公开类型、函数、构建变量和工具均使用 `ZD` 前缀。普通扫描的 ID 派生已改为带 key 的 `LMStringProtection/id/v2`，与迁移前的无密钥 ID 不兼容，升级后需重新生成源码和 Blob。
+
+## 项目背景与设计取舍
+
+ZDObf 由原业务仓库中的字符串保护组件迁移而来，目标是成为可独立接入的仓库：公开文件名、类名、函数名、Rust crate、构建变量和文档统一使用 `ZD` 前缀，继续同时支持 Swift、Objective-C、Rust、Zig、CocoaPods 和 Mach-O section 嵌入。
+
+- **保持不变**：加密格式（`LMST` v1 Blob）、Runtime C ABI、源码扫描器、目录兼容模式和 Xcode Build Phase。
+- **不在范围内**：原业务仓库的 Podfile 接入和业务调用点不属于本仓库。
+- **为什么是一个仓库**：Rust crypto core、Runtime、Zig generator、Apple wrapper、构建脚本和测试共享同一套 Blob 协议。只抽取 Apple wrapper 会破坏“扫描 → 加密 → 嵌入 → 运行时查询”的构建闭环，也会引入额外的跨仓库依赖，因此整体迁移，只改命名空间和布局，不改变加密算法或构建语义。
+
+### 验收标准
+
+- `cargo test --locked --workspace`、Zig generator 测试和 Python 测试通过。
+- 公开头文件不依赖仓库内部路径（Pod 符号链接、SPM binary target 和 framework 复制布局均可编译）。
+- 代码、脚本、Podspec、测试和文档中不残留旧的 `LM` 公开标识；`LMST` 与 `LMStringProtection/...` 作为协议字节值除外。

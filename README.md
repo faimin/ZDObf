@@ -27,7 +27,7 @@ ZDObfRuntime.xcframework + ZDObfKit wrapper
 
 - **源码扫描**：`ZDString("...")` 和 `ZDString(@"...")` 只允许使用单个普通字符串字面量。扫描器把调用替换为内部 `ZDStringDecodeBytes(...)`，原始文件不参与编译。
 - **加密目录**：Rust crypto core 使用 XChaCha20-Poly1305、HKDF 和 SHA-256 派生 ID、key、nonce 与 AAD，初始化时逐条认证全部记录，任何篡改或错误 key 都会使初始化失败。
-- **Mach-O 嵌入**：构建脚本按 device/simulator 和架构生成 relocatable object，使用 `ld -sectcreate` 把 Blob 链接到最终 App。
+- **Mach-O 嵌入**：构建脚本按 device/simulator 和架构把 Blob 编成带 `S_ATTR_NO_DEAD_STRIP` 的 `__DATA,__zdstring` relocatable object，最终链接的 `-dead_strip` 也不会剥掉它。
 - **运行时查询**：wrapper 只把 Runtime callback 中的字节复制成 `String`/`NSString`，Runtime 返回后清理临时明文缓冲区。
 
 `ZDStringDecodeBytes(...)` 的 8 字节参数是稳定查询 ID 的小端表示，不是字符串密文本身。真正的密文位于 `__DATA,__zdstring` section；wrapper 还原 ID 后调用 Rust Runtime 解密对应记录。业务源码只写 `ZDString(...)`，无需维护字节数组或生成函数名。

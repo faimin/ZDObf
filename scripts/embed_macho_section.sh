@@ -75,12 +75,16 @@ case "$sdk" in
         exit 64
         ;;
 esac
-ld_path=$(xcrun --sdk "$sdk" --find ld)
 clang_path=$(xcrun --sdk "$sdk" --find clang)
 sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
-sdk_version=$(xcrun --sdk "$sdk" --show-sdk-version)
 
-# ld -r 需要空 object；每个架构单独生成，再合并以兼容 Xcode 的共享构建阶段。
+# 汇编器把 Blob 编成 __DATA,__zdstring section 并标记 S_ATTR_NO_DEAD_STRIP：
+# 最终链接在 -dead_strip（Xcode 默认）下也必须保留该 section。.incbin 按当前
+# 工作目录解析，因此这里把 Blob 固定为绝对路径并转义汇编字符串。
+blob_path=$(CDPATH= cd -- "$(dirname "$blob")" && pwd)/$(basename "$blob")
+escaped_blob=$(printf '%s' "$blob_path" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+# 每个架构单独生成，再合并以兼容 Xcode 的共享构建阶段。
 temporary_dir=$(mktemp -d "${output}.zdstring.XXXXXX")
 trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
 set --
@@ -101,11 +105,10 @@ for target_arch in $arch; do
         target_suffix="-apple-ios${minimum}-simulator"
     fi
     target="${target_arch}${target_suffix}"
-    stub="$temporary_dir/$target_arch-stub.o"
     section="$temporary_dir/$target_arch.o"
-    "$clang_path" -target "$target" -isysroot "$sdk_path" -c -x c /dev/null -o "$stub"
-    "$ld_path" -r -arch "$target_arch" -platform_version "$platform" "$minimum" "$sdk_version" \
-        -sectcreate __DATA __zdstring "$blob" "$stub" -o "$section"
+    assembly="$temporary_dir/$target_arch.s"
+    printf '.section __DATA,__zdstring,regular,no_dead_strip\n.incbin "%s"\n' "$escaped_blob" > "$assembly"
+    "$clang_path" -target "$target" -isysroot "$sdk_path" -x assembler -c "$assembly" -o "$section"
     set -- "$@" "$section"
 done
 if [ "$#" -eq 0 ]; then

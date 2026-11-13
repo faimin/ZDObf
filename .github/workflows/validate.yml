@@ -1,0 +1,74 @@
+name: Validate ZDObf
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2.2.1
+        with:
+          version: 0.17.1
+
+      - name: Install CocoaPods
+        run: gem install cocoapods --no-document
+
+      - name: Validate CocoaPods specification
+        run: |
+          pod ipc spec ZDObf.podspec > /tmp/zdobf-podspec.json
+          python3 - <<'PY'
+          import json
+
+          with open('/tmp/zdobf-podspec.json', encoding='utf-8') as stream:
+              spec = json.load(stream)
+
+          assert spec['module_name'] == 'ZDObfKit'
+          assert spec['platforms']['ios'] == '15.0'
+          assert spec['platforms']['osx'] == '15.0'
+          assert spec['platforms']['tvos'] == '15.0'
+          assert spec['platforms']['watchos'] == '8.0'
+          assert spec['platforms']['visionos'] == '1.0'
+          assert spec['vendored_frameworks'] == 'dist/ZDObfRuntime.xcframework'
+          print('CocoaPods specification is valid')
+          PY
+
+      - name: Validate Swift Package Manager manifest and build
+        run: |
+          swift package dump-package > /tmp/zdobf-package.json
+          python3 - <<'PY'
+          import json
+
+          with open('/tmp/zdobf-package.json', encoding='utf-8') as stream:
+              package = json.load(stream)
+
+          assert package['name'] == 'ZDObf'
+          assert {product['name'] for product in package['products']} == {
+              'ZDObfKit',
+              'ZDObfKitObjC',
+          }
+          print('Swift Package Manager manifest is valid')
+          PY
+          swift build
+
+      - name: Validate component code
+        run: |
+          cargo test --locked --workspace
+          python3 -m unittest discover -s Tests -p 'test_*.py' -q
+          sh -n scripts/build_xcframework.sh
+          sh -n scripts/embed_macho_section.sh
+          sh -n scripts/xcode_build_phase.sh

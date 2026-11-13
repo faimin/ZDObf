@@ -18,9 +18,12 @@ Pod::Spec.new do |spec|
   spec.watchos.deployment_target = '8.0'
   spec.visionos.deployment_target = '1.0'
   spec.module_name = 'ZDObfKit'
+  spec.swift_versions = ['5.0', '6.0']
   spec.source_files = 'Apple/**/*.{h,mm,swift}'
   spec.public_header_files = 'Apple/ObjectiveC/*.h'
   spec.vendored_frameworks = 'dist/ZDObfRuntime.xcframework'
+  # 仓库不跟踪 Runtime 二进制时，pod install 从固定的 GitHub Release 下载并校验 SHA-256。
+  spec.prepare_command = 'test -d dist/ZDObfRuntime.xcframework || sh scripts/fetch_runtime.sh'
   spec.requires_arc = true
   spec.frameworks = 'Foundation'
   spec.preserve_paths = 'crates/runtime/include/*.h', 'scripts/*.sh', 'Generator/**/*', 'README.md'

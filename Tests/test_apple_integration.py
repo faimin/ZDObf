@@ -43,6 +43,7 @@ class AppleIntegrationTests(unittest.TestCase):
             ("appletvos", "arm64", "arm64-apple-tvos15.0", "TVOS"),
             ("appletvsimulator", "arm64", "arm64-apple-tvos15.0-simulator", "TVOSSIMULATOR"),
             ("watchos", "arm64", "arm64-apple-watchos8.0", "WATCHOS"),
+            ("watchos", "arm64_32", "arm64_32-apple-watchos8.0", "WATCHOS"),
             ("watchsimulator", "arm64", "arm64-apple-watchos8.0-simulator", "WATCHOSSIMULATOR"),
             ("xros", "arm64", "arm64-apple-visionos1.0", "VISIONOS"),
             ("xrsimulator", "arm64", "arm64-apple-visionos1.0-simulator", "VISIONOSSIMULATOR"),

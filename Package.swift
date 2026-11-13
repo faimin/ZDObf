@@ -1,5 +1,37 @@
 // swift-tools-version: 6.0
+import Foundation
 import PackageDescription
+
+// 预编译 Runtime 的发布固定值，由 scripts/pin_runtime_release.sh 在发布时改写；
+// 版本或 checksum 为空表示尚未固定到某个 GitHub Release。
+let runtimeReleaseVersion = ""
+let runtimeReleaseChecksum = ""
+
+// 本地存在 dist/ZDObfRuntime.xcframework 时直接使用（开发、CI 构建、仓库内跟踪的产物）；
+// 设置 ZDOBF_USE_RELEASE_RUNTIME=1 可强制改用 Release 资产验证远程路径。
+let localRuntimePath = "dist/ZDObfRuntime.xcframework"
+let runtimeTarget: Target = {
+    let localExists = FileManager.default.fileExists(
+        atPath: Context.packageDirectory + "/" + localRuntimePath
+    )
+    if localExists && Context.environment["ZDOBF_USE_RELEASE_RUNTIME"] == nil {
+        return .binaryTarget(name: "ZDObfRuntime", path: localRuntimePath)
+    }
+    guard !runtimeReleaseVersion.isEmpty, !runtimeReleaseChecksum.isEmpty else {
+        FileHandle.standardError.write(
+            Data(
+                ("error: \(localRuntimePath) is missing and no Runtime release is pinned. "
+                    + "Run scripts/fetch_runtime.sh or build it with scripts/build_xcframework.sh.\n").utf8
+            )
+        )
+        exit(1)
+    }
+    return .binaryTarget(
+        name: "ZDObfRuntime",
+        url: "https://github.com/faimin/ZDObf/releases/download/v\(runtimeReleaseVersion)/ZDObfRuntime.xcframework.zip",
+        checksum: runtimeReleaseChecksum
+    )
+}()
 
 let package = Package(
     name: "ZDObf",
@@ -15,10 +47,7 @@ let package = Package(
         .library(name: "ZDObfKitObjC", targets: ["ZDObfKitObjC"])
     ],
     targets: [
-        .binaryTarget(
-            name: "ZDObfRuntime",
-            path: "dist/ZDObfRuntime.xcframework"
-        ),
+        runtimeTarget,
         .target(
             name: "ZDObfKit",
             dependencies: ["ZDObfRuntime", "ZDObfKitObjC"],

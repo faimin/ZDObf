@@ -87,6 +87,13 @@ set --
 for target_arch in $arch; do
     case "$target_arch" in
         arm64|arm64e|x86_64) ;;
+        # arm64_32 是 32 位指针的 watchOS 真机架构（Series 4–8、SE 1 等）。
+        arm64_32)
+            if [ "$sdk" != "watchos" ]; then
+                printf 'Architecture arm64_32 is only valid for watchos: %s\n' "$sdk" >&2
+                exit 64
+            fi
+            ;;
         *) printf 'Unsupported architecture: %s\n' "$target_arch" >&2; exit 64 ;;
     esac
     if [ "$sdk" = "iphonesimulator" ] && [ "$target_arch" = "arm64" ] && [ "${minimum%%.*}" -lt 14 ]; then

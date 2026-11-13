@@ -47,6 +47,9 @@ jobs:
           print('CocoaPods specification is valid')
           PY
 
+      - name: Lint CocoaPods specification (iOS and macOS, dynamic frameworks)
+        run: pod lib lint ZDObf.podspec --platforms=ios,osx
+
       - name: Validate Swift Package Manager manifest and build
         run: |
           swift package dump-package > /tmp/zdobf-package.json
@@ -67,8 +70,13 @@ jobs:
 
       - name: Validate component code
         run: |
+          cargo fmt --check
+          cargo clippy --locked --workspace --all-targets -- -D warnings
           cargo test --locked --workspace
+          (cd Generator && zig fmt --check src && zig build test)
           python3 -m unittest discover -s Tests -p 'test_*.py' -q
           sh -n scripts/build_xcframework.sh
           sh -n scripts/embed_macho_section.sh
           sh -n scripts/xcode_build_phase.sh
+          sh -n scripts/fetch_runtime.sh
+          sh -n scripts/pin_runtime_release.sh

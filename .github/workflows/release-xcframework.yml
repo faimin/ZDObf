@@ -33,6 +33,17 @@ jobs:
           shasum -a 256 dist/ZDObfRuntime.xcframework.zip \
             > dist/ZDObfRuntime.xcframework.zip.sha256
 
+      - name: Show pin instructions
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          checksum=$(swift package compute-checksum dist/ZDObfRuntime.xcframework.zip)
+          {
+            echo "### ZDObfRuntime.xcframework.zip"
+            echo ""
+            echo "- sha256: \`$checksum\`"
+            echo "- 发布后固定: \`scripts/pin_runtime_release.sh $version dist/ZDObfRuntime.xcframework.zip\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7.0.2
         with:

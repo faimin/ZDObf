@@ -22,8 +22,8 @@ class SwiftPackageTests(unittest.TestCase):
         package = json.loads(result.stdout)
         products = {product["name"] for product in package["products"]}
         targets = {target["name"] for target in package["targets"]}
-        self.assertEqual(products, {"ZDObf", "ZDObfObjC"})
-        self.assertTrue({"ZDObfRuntime", "ZDObf", "ZDObfObjC"}.issubset(targets))
+        self.assertEqual(products, {"ZDObfKit", "ZDObfKitObjC"})
+        self.assertTrue({"ZDObfRuntime", "ZDObfKit", "ZDObfKitObjC"}.issubset(targets))
         self.assertTrue((ROOT / "dist/ZDObfRuntime.xcframework/Info.plist").is_file())
 
     @unittest.skipUnless(shutil.which("xcrun"), "Runtime linking requires an Apple SDK")
@@ -36,13 +36,13 @@ class SwiftPackageTests(unittest.TestCase):
                 'let package = Package(name: "Consumer", platforms: [.macOS(.v15)], '
                 f'dependencies: [.package(name: "ZDObf", path: {json.dumps(str(ROOT))})], '
                 'targets: [.executableTarget(name: "Consumer", dependencies: '
-                '[.product(name: "ZDObf", package: "ZDObf")], path: "Sources")])\n',
+                '[.product(name: "ZDObfKit", package: "ZDObf")], path: "Sources")])\n',
                 encoding="utf-8",
             )
             (temporary / "Sources").mkdir()
             (temporary / "Sources/main.swift").write_text(
                 'import Foundation\n'
-                'import ZDObf\n'
+                'import ZDObfKit\n'
                 'do {\n'
                 '    try ZDObf.initializeEmbedded(key: Data(repeating: 0, count: 32))\n'
                 '    fatalError("Unexpected initialization without a Blob section")\n'

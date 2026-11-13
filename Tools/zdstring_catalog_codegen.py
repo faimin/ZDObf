@@ -76,7 +76,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
     objc_implementation = "\n".join(
         [
             '#import "ZDURLPathCatalog.h"',
-            '#import <ZDObf/ZDObf.h>',
+            '#import <ZDObfKit/ZDObf.h>',
             "",
             "@implementation ZDURLPathCatalogObjC",
             "",
@@ -88,7 +88,7 @@ def render_catalog(mapping: object) -> dict[str, str]:
     )
     swift = "\n".join(
         [
-            "import ZDObf",
+            "import ZDObfKit",
             "",
             "public enum ZDURLPathCatalog {",
             "\n\n".join(properties),

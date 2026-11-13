@@ -415,7 +415,7 @@ Rust Runtime 与 App Blob 分离。发布 Runtime 时执行：
 scripts/build_xcframework.sh
 ```
 
-它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 和 `Package.swift` 都引用仓库内可追踪的 `dist/ZDObfRuntime.xcframework`；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
+它生成 iOS、iOS Simulator、tvOS、watchOS、visionOS、macOS 和 Mac Catalyst 的静态 `ZDObfRuntime.xcframework`。`ZDObf.podspec` 使用 `ZDObfKit` 模块名，`Package.swift` 使用包名 `ZDObf`、Swift 模块名 `ZDObfKit` 和 Objective-C 模块名 `ZDObfKitObjC`，二者都引用仓库内可追踪的 `dist/ZDObfRuntime.xcframework`；Pod 安装、SwiftPM resolve、source scan 和每次 App 增量构建不调用 Cargo 来重编 Runtime。GitHub Release workflow 会构建同一目录并上传 zip 与 SHA-256 校验文件。
 
 ### 7.4 端到端接入示例
 
@@ -446,7 +446,7 @@ Swift 原始业务文件 `App/Protected/ProtectedAPI.swift`：
 
 ```swift
 import Foundation
-import ZDObf
+import ZDObfKit
 
 enum ProtectedAPI {
     static func userURL() -> URL? {
@@ -459,7 +459,7 @@ enum ProtectedAPI {
 Objective-C 原始业务文件 `App/Protected/ProtectedAPIObjC.m`：
 
 ```objc
-#import <ZDObf/ZDObf.h>
+#import <ZDObfKit/ZDObf.h>
 
 NSString * _Nullable ProtectedUserURL(void) {
     return ZDString(@"https://api.example.com/v1/user");
@@ -518,7 +518,7 @@ BOOL InitializeProtectedStrings(NSData *runtimeKey, NSError **error) {
 }
 ```
 
-Swift 启动函数所在文件需要导入 `Foundation` 和 `ZDObf`，Objective-C 文件导入 `<ZDObf/ZDObf.h>`。两条路径共享同一个 Runtime 单例，一个进程只选择其中一条成功初始化一次。初始化成功后才调用 `ProtectedAPI.userURL()` 或 `ProtectedUserURL()`；未初始化或查询失败时，生成的访问器返回 `nil`。Swift 可以直接用 `URLSession.shared.dataTask(with: url).resume()` 发起请求。
+Swift 启动函数所在文件需要导入 `Foundation` 和 `ZDObfKit`，Objective-C 文件导入 `<ZDObfKit/ZDObf.h>`。两条路径共享同一个 Runtime 单例，一个进程只选择其中一条成功初始化一次。初始化成功后才调用 `ProtectedAPI.userURL()` 或 `ProtectedUserURL()`；未初始化或查询失败时，生成的访问器返回 `nil`。Swift 可以直接用 `URLSession.shared.dataTask(with: url).resume()` 发起请求。
 
 构建后的验收命令：
 

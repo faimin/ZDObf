@@ -11,8 +11,8 @@ let package = Package(
         .visionOS(.v1)
     ],
     products: [
-        .library(name: "ZDObf", targets: ["ZDObf"]),
-        .library(name: "ZDObfObjC", targets: ["ZDObfObjC"])
+        .library(name: "ZDObfKit", targets: ["ZDObfKit"]),
+        .library(name: "ZDObfKitObjC", targets: ["ZDObfKitObjC"])
     ],
     targets: [
         .binaryTarget(
@@ -20,12 +20,12 @@ let package = Package(
             path: "dist/ZDObfRuntime.xcframework"
         ),
         .target(
-            name: "ZDObf",
-            dependencies: ["ZDObfRuntime", "ZDObfObjC"],
+            name: "ZDObfKit",
+            dependencies: ["ZDObfRuntime", "ZDObfKitObjC"],
             path: "Apple/Swift"
         ),
         .target(
-            name: "ZDObfObjC",
+            name: "ZDObfKitObjC",
             dependencies: ["ZDObfRuntime"],
             path: "Apple/ObjectiveC",
             publicHeadersPath: ".",

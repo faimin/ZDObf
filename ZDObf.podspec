@@ -17,7 +17,7 @@ Pod::Spec.new do |spec|
   spec.tvos.deployment_target = '15.0'
   spec.watchos.deployment_target = '8.0'
   spec.visionos.deployment_target = '1.0'
-  spec.module_name = spec.name
+  spec.module_name = 'ZDObfKit'
   spec.source_files = 'Apple/**/*.{h,mm,swift}'
   spec.public_header_files = 'Apple/ObjectiveC/*.h'
   spec.vendored_frameworks = 'dist/ZDObfRuntime.xcframework'

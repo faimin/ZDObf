@@ -22,12 +22,12 @@ class AppleIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
             source = temporary / "client.m"
-            source.write_text('#import <ZDObf/ZDObf.h>\n', encoding="utf-8")
-            public = temporary / "Public" / "ZDObf"
+            source.write_text('#import <ZDObfKit/ZDObf.h>\n', encoding="utf-8")
+            public = temporary / "Public" / "ZDObfKit"
             public.mkdir(parents=True)
             (public / "ZDObf.h").symlink_to(ROOT / "Apple/ObjectiveC/ZDObf.h")
             self.run_command(["xcrun", "clang", "-fsyntax-only", "-I", str(public.parent), str(source)])
-            framework = temporary / "ZDObf.framework" / "Headers"
+            framework = temporary / "ZDObfKit.framework" / "Headers"
             framework.mkdir(parents=True)
             shutil.copyfile(ROOT / "Apple/ObjectiveC/ZDObf.h", framework / "ZDObf.h")
             self.run_command(["xcrun", "clang", "-fsyntax-only", "-F", str(temporary), str(source)])

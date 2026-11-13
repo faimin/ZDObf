@@ -21,7 +21,7 @@ Swift / Objective-C 源码
                     └─ embed_macho_section.sh
                          └─ 链接为 __DATA,__zdstring section
 
-ZDObfRuntime.xcframework + ZDObf wrapper
+ZDObfRuntime.xcframework + ZDObfKit wrapper
                          └─ App 运行时初始化和按 ID 查询
 ```
 
@@ -86,10 +86,10 @@ pod 'ZDObf', :path => '/absolute/path/to/ZDObf'
 
 ### Swift Package Manager
 
-本仓库的 `Package.swift` 提供两个产品：
+本仓库的 `Package.swift` 包名为 `ZDObf`，提供两个产品。包名与模块名分开：
 
-- `ZDObf`：Swift wrapper 和 `ZDObf.initializeEmbedded(key:)` API。
-- `ZDObfObjC`：Objective-C wrapper 和 `ZDObfInitializeEmbedded(...)` API。
+- `ZDObfKit`：Swift 模块、Swift wrapper 和 `ZDObf.initializeEmbedded(key:)` API。
+- `ZDObfKitObjC`：Objective-C 模块、Objective-C wrapper 和 `ZDObfInitializeEmbedded(...)` API。
 
 本地开发或使用源码依赖时：
 
@@ -99,7 +99,7 @@ dependencies: [
 ]
 ```
 
-在 target 中依赖 `ZDObf`；如果需要 Objective-C API，则依赖 `ZDObfObjC`。`Package.swift` 使用仓库内可追踪的 `dist/ZDObfRuntime.xcframework` binary target，因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。发布版本可以先从 GitHub Release 下载同名 XCFramework 覆盖 `dist/ZDObfRuntime.xcframework`，再通过本地包或 Git tag 引入。
+在 target 中依赖产品 `ZDObfKit`；如果需要单独使用 Objective-C API，则依赖 `ZDObfKitObjC`。Swift 源码导入 `ZDObfKit`，Objective-C 源码导入 `<ZDObfKit/ZDObf.h>`。`Package.swift` 使用仓库内可追踪的 `dist/ZDObfRuntime.xcframework` binary target，因此执行 `swift package resolve` 或 `swift build` 不需要本机安装 Rust。发布版本可以先从 GitHub Release 下载同名 XCFramework 覆盖 `dist/ZDObfRuntime.xcframework`，再通过本地包或 Git tag 引入。
 
 ## 构建工具和密钥
 
@@ -189,7 +189,7 @@ printf '%s|%s|%s\n' \
 ### Swift
 
 ```swift
-import ZDObf
+import ZDObfKit
 
 enum ProtectedAPI {
     static func userURL() -> String? {
@@ -203,7 +203,7 @@ enum ProtectedAPI {
 
 ```swift
 import Foundation
-import ZDObf
+import ZDObfKit
 
 func prepareProtectedStrings(runtimeKey: Data) throws {
     try ZDObf.initializeEmbedded(key: runtimeKey)
@@ -224,7 +224,7 @@ let value = try ZDObf.string(for: generatedID)
 
 ```swift
 import Foundation
-import ZDObf
+import ZDObfKit
 
 enum ProtectedRequest {
     static func userRequest() -> URLRequest? {
@@ -251,7 +251,7 @@ func startProtectedRequest(keyBase64: String) throws {
 ### Objective-C
 
 ```objc
-#import <ZDObf/ZDObf.h>
+#import <ZDObfKit/ZDObf.h>
 
 NSString * _Nullable ProtectedUserURL(void) {
     return ZDString(@"https://api.example.com/v1/user");
@@ -265,7 +265,7 @@ BOOL PrepareProtectedStrings(NSData *runtimeKey, NSError **error) {
 在普通启动代码中先初始化，再调用已扫描业务文件中的 `ProtectedUserURL()`。下面的 `keyBase64` 同样由业务密钥提供方传入：
 
 ```objc
-#import <ZDObf/ZDObf.h>
+#import <ZDObfKit/ZDObf.h>
 
 extern NSString * _Nullable ProtectedUserURL(void);
 

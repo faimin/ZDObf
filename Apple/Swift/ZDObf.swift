@@ -41,6 +41,13 @@ public enum ZDObf {
         try throwIfNeeded(code)
     }
 
+    /// 使用构建时内嵌的 key 初始化（构建环境设置 `ZD_STRING_EMBED_KEY=1`）。
+    /// key 只需在构建环境配置一处；但它（掩码后）与密文同在二进制里，只剩混淆强度的保护。
+    /// 需要更强的保护时改用 `initializeEmbedded(key:)` 并从运行时安全来源取得 key。
+    public static func initializeEmbedded() throws {
+        try throwIfNeeded(zd_string_runtime_init_embedded_builtin_key())
+    }
+
     public static func string(for id: UInt64) throws -> String {
         final class StringBox {
             var value: String?
@@ -95,6 +102,9 @@ private func zd_string_runtime_init_embedded(
     _ key: UnsafePointer<UInt8>?,
     _ keyLength: Int
 ) -> UInt32
+
+@_silgen_name("zd_string_runtime_init_embedded_builtin_key")
+private func zd_string_runtime_init_embedded_builtin_key() -> UInt32
 
 private typealias ZDStringUseCallback = @convention(c) (UnsafePointer<UInt8>?, Int, UnsafeMutableRawPointer?) -> UInt32
 

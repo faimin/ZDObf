@@ -58,6 +58,11 @@ static NSString *DecodeID(uint64_t identifier) {
     NSError *error = nil;
     XCTAssertFalse(ZDObfInitializeEmbedded(KeyData(), &error));
     XCTAssertNotNil(error);
+
+    // 内嵌 key 模式（无参）同样需要 section。
+    error = nil;
+    XCTAssertFalse(ZDObfInitializeEmbeddedWithBuiltInKey(&error));
+    XCTAssertNotNil(error);
 }
 
 @end

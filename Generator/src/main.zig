@@ -39,6 +39,10 @@ pub fn main(init: std.process.Init) !void {
         try run_merge_manifests(allocator, init.io, argv[2..]);
         return;
     }
+    if (argv.len > 1 and std.mem.eql(u8, argv[1], "embed-key")) {
+        try run_embed_key(allocator, init.io, init.environ_map, argv[2..]);
+        return;
+    }
     if (argv.len > 1 and std.mem.eql(u8, argv[1], "catalog-manifest")) {
         try run_catalog_manifest(allocator, init.io, argv[2..]);
         return;
@@ -564,6 +568,35 @@ fn strip_comments(allocator: std.mem.Allocator, source: []const u8, language: []
     return try output.toOwnedSlice(allocator);
 }
 
+// 内嵌 key 模式（ZD_STRING_EMBED_KEY=1）写入 __DATA,__zdkey 的 72 字节载荷：
+// "ZDKY" | version u16 LE = 1 | flags u16 LE = 0 | mask[32] | masked[32]，key = mask xor masked。
+// 这只是避免 key 以明文字节出现的混淆，不是加密：解码所需信息都在同一个二进制里。
+const key_blob_len = 72;
+
+fn build_key_blob(key: []const u8) [key_blob_len]u8 {
+    const Hkdf = std.crypto.kdf.hkdf.HkdfSha256;
+    const prk = Hkdf.extract("LMStringProtection/key-mask/v1", key);
+    var mask: [32]u8 = undefined;
+    Hkdf.expand(&mask, "mask", prk);
+    var blob: [key_blob_len]u8 = undefined;
+    @memcpy(blob[0..4], "ZDKY");
+    std.mem.writeInt(u16, blob[4..6], 1, .little);
+    std.mem.writeInt(u16, blob[6..8], 0, .little);
+    @memcpy(blob[8..40], &mask);
+    for (key, 0..) |byte, index| blob[40 + index] = byte ^ mask[index];
+    return blob;
+}
+
+fn run_embed_key(allocator: std.mem.Allocator, io: std.Io, environ_map: *std.process.Environ.Map, args: []const []const u8) !void {
+    // 只做一件事：把构建 key（环境变量，唯一配置点）编码成可链接进 App 的 __zdkey 载荷。
+    if (args.len != 2 or !std.mem.eql(u8, args[0], "--output")) return error.InvalidEmbedKeyArguments;
+    var key = try read_runtime_key(environ_map);
+    defer std.crypto.secureZero(u8, &key);
+    var blob = build_key_blob(&key);
+    defer std.crypto.secureZero(u8, &blob);
+    try write_output_atomically(allocator, io, args[1], &blob, .private);
+}
+
 fn read_runtime_key(environ_map: *std.process.Environ.Map) ![32]u8 {
     const encoded = environ_map.get("ZD_STRING_RUNTIME_KEY_B64") orelse return error.MissingRuntimeKey;
     var key: [32]u8 = undefined;
@@ -788,6 +821,17 @@ test "scan arguments reject empty, oversized namespaces and unknown languages" {
 }
 
 const test_key: [32]u8 = @splat(0x11);
+
+test "embedded key payload masks the key and round-trips" {
+    const key: [32]u8 = @splat(0x11);
+    const blob = build_key_blob(&key);
+    try std.testing.expectEqualSlices(u8, "ZDKY", blob[0..4]);
+    try std.testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, blob[4..6], .little));
+    try std.testing.expect(!std.mem.containsAtLeast(u8, &blob, 4, &[_]u8{ 0x11, 0x11, 0x11, 0x11 }));
+    var decoded: [32]u8 = undefined;
+    for (0..32) |index| decoded[index] = blob[8 + index] ^ blob[40 + index];
+    try std.testing.expectEqualSlices(u8, &key, &decoded);
+}
 
 test "string ids match the Rust known answers" {
     try std.testing.expectEqual(@as(u64, 0x26e86c4a43c0723d), try string_id(std.testing.allocator, &test_key, "com.example.scanner", "secret"));

@@ -84,6 +84,17 @@ sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
 blob_path=$(CDPATH= cd -- "$(dirname "$blob")" && pwd)/$(basename "$blob")
 escaped_blob=$(printf '%s' "$blob_path" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
+# 可选：内嵌 key 模式的载荷（ZD_STRING_EMBED_KEY=1 时由 xcode_build_phase.sh 生成），放进 __DATA,__zdkey。
+escaped_key_blob=""
+if [ -n "${ZD_STRING_KEY_BLOB:-}" ]; then
+    if [ ! -f "$ZD_STRING_KEY_BLOB" ]; then
+        printf 'Key blob not found: %s\n' "$ZD_STRING_KEY_BLOB" >&2
+        exit 66
+    fi
+    key_blob_path=$(CDPATH= cd -- "$(dirname "$ZD_STRING_KEY_BLOB")" && pwd)/$(basename "$ZD_STRING_KEY_BLOB")
+    escaped_key_blob=$(printf '%s' "$key_blob_path" | sed 's/\\/\\\\/g; s/"/\\"/g')
+fi
+
 # 每个架构单独生成，再合并以兼容 Xcode 的共享构建阶段。
 temporary_dir=$(mktemp -d "${output}.zdstring.XXXXXX")
 trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
@@ -108,6 +119,9 @@ for target_arch in $arch; do
     section="$temporary_dir/$target_arch.o"
     assembly="$temporary_dir/$target_arch.s"
     printf '.section __DATA,__zdstring,regular,no_dead_strip\n.incbin "%s"\n' "$escaped_blob" > "$assembly"
+    if [ -n "$escaped_key_blob" ]; then
+        printf '.section __DATA,__zdkey,regular,no_dead_strip\n.incbin "%s"\n' "$escaped_key_blob" >> "$assembly"
+    fi
     "$clang_path" -target "$target" -isysroot "$sdk_path" -x assembler -c "$assembly" -o "$section"
     set -- "$@" "$section"
 done

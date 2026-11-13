@@ -44,6 +44,10 @@ class DemoProjectTests(unittest.TestCase):
             self.assertIn("objc host: analytics.example.com", run.stdout)
             self.assertIn("unknown id is reported as invalidID", run.stdout)
 
+            # key 只配置在构建脚本里：二进制中既没有连续的明文 key，也没有 DemoKey 之类的第二份拷贝。
+            self.assertNotIn(bytes(range(32)), binary.read_bytes())
+            self.assertFalse((DEMO / "App" / "DemoKey.swift").exists())
+
             # 生成源码和最终二进制都不含明文，且存在密文 section。
             for generated_file in generated.iterdir():
                 text = generated_file.read_text(encoding="utf-8")

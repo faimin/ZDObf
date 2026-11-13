@@ -64,6 +64,10 @@ final class ZDObfKitTests: XCTestCase {
     }
 
     func test05_EmbeddedInitializationFailsWithoutASection() {
+        // 内嵌 key 模式（无参）同样需要 section，缺失时报 malformedBlob。
+        XCTAssertThrowsError(try ZDObf.initializeEmbedded()) {
+            XCTAssertEqual($0 as? ZDObfError, .malformedBlob)
+        }
         // 测试进程里没有链接 __DATA,__zdstring（见 Examples/ZDObfDemo 的端到端用法）。
         XCTAssertThrowsError(try ZDObf.initializeEmbedded(key: Fixture.key)) {
             XCTAssertEqual($0 as? ZDObfError, .malformedBlob)

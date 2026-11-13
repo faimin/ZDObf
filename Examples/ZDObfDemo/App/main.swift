@@ -2,9 +2,10 @@ import Foundation
 import ZDObfKit
 
 // 1. 在访问任何受保护字符串之前初始化一次。
-//    initializeEmbedded 会从最终可执行文件的 __DATA,__zdstring section 读取密文 Blob。
+//    构建时 ZD_STRING_EMBED_KEY=1，key 已随密文内嵌，所以这里不需要传 key（key 只在构建脚本里配置一处）。
+//    真实 App 若要把 key 与密文分离，改用 ZDObf.initializeEmbedded(key:) 并从 Keychain/服务端取得 key。
 do {
-    try ZDObf.initializeEmbedded(key: DemoKey.runtimeKey)
+    try ZDObf.initializeEmbedded()
 } catch {
     print("ZDObf initialization failed: \(error)")
     exit(1)

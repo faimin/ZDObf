@@ -43,9 +43,16 @@ mkdir -p "$derived_dir/manifests"
 merged_manifest="$derived_dir/strings.manifest.json"
 blob="$derived_dir/strings.zdstr"
 # Manifest 含全部明文字符串；无论成功与否都不留在 DerivedData，调试时可设 ZD_STRING_KEEP_MANIFESTS=1 保留。
-if [ "${ZD_STRING_KEEP_MANIFESTS:-0}" != "1" ]; then
-    trap 'rm -rf "$derived_dir/manifests" "$merged_manifest"' EXIT
-fi
+key_blob=""
+cleanup() {
+    if [ "${ZD_STRING_KEEP_MANIFESTS:-0}" != "1" ]; then
+        rm -rf "$derived_dir/manifests" "$merged_manifest"
+    fi
+    if [ -n "$key_blob" ]; then
+        rm -f "$key_blob"
+    fi
+}
+trap cleanup EXIT
 set -- merge-manifests --output "$merged_manifest"
 entry_index=0
 
@@ -106,4 +113,11 @@ arch=${ZD_STRING_ARCH:-${CURRENT_ARCH:-}}
 case "$arch" in
     ''|undefined_arch) arch=${ARCHS:-arm64} ;;
 esac
-ZD_STRING_SDK="$sdk" ZD_STRING_ARCH="$arch" "$embed_script" "$blob" "$section_object" "$arch"
+# 可选的内嵌 key 模式：key 只需在构建环境配置一次，运行时用无参初始化即可。
+# 代价是 key 的（掩码后）字节和密文一起进入二进制，只剩混淆强度的保护；默认关闭。
+if [ "${ZD_STRING_EMBED_KEY:-0}" = "1" ]; then
+    key_blob="$derived_dir/zdkey.bin"
+    "$generator" embed-key --output "$key_blob"
+    printf '%s\n' "warning: ZD_STRING_EMBED_KEY=1 embeds the (masked) runtime key in the binary" >&2
+fi
+ZD_STRING_KEY_BLOB="$key_blob" ZD_STRING_SDK="$sdk" ZD_STRING_ARCH="$arch" "$embed_script" "$blob" "$section_object" "$arch"

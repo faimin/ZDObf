@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		33A3501E5E71B4A24E86DACC /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50995EBB7B0D51F8520A118 /* main.swift */; };
-		599175A91625D61DD2D5B7CE /* DemoKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8C908ED0CB5D37BAAB5F82 /* DemoKey.swift */; };
 		691354A144510890C1B24754 /* ZDObfKit in Frameworks */ = {isa = PBXBuildFile; productRef = 729CC918755CBE982E769C3C /* ZDObfKit */; };
 		AE6E895A5BA98070D95D24D7 /* ZDObfKitObjC in Frameworks */ = {isa = PBXBuildFile; productRef = 1FD6B1457B066402E8300553 /* ZDObfKitObjC */; };
 		C0D7B23DCE2F6A475FA55C13 /* ProtectedAPIObjC.m in Sources */ = {isa = PBXBuildFile; fileRef = D4BE9FC59250C610692E98E5 /* ProtectedAPIObjC.m */; };
@@ -21,7 +20,6 @@
 		570BDDDD6FC79FB472C9ECB3 /* ZDObfDemo-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ZDObfDemo-Bridging-Header.h"; sourceTree = "<group>"; };
 		60D51F1DDBF1944C19336088 /* ProtectedAPIObjC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ProtectedAPIObjC.h; sourceTree = "<group>"; };
 		A70C5E9DC074CFA009015351 /* ZDObfDemo */ = {isa = PBXFileReference; includeInIndex = 0; path = ZDObfDemo; sourceTree = BUILT_PRODUCTS_DIR; };
-		AC8C908ED0CB5D37BAAB5F82 /* DemoKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoKey.swift; sourceTree = "<group>"; };
 		B50995EBB7B0D51F8520A118 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		D4BE9FC59250C610692E98E5 /* ProtectedAPIObjC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ProtectedAPIObjC.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -58,7 +56,6 @@
 		8B423F632EC5D2A2EAC33EB8 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				AC8C908ED0CB5D37BAAB5F82 /* DemoKey.swift */,
 				B50995EBB7B0D51F8520A118 /* main.swift */,
 				60D51F1DDBF1944C19336088 /* ProtectedAPIObjC.h */,
 				570BDDDD6FC79FB472C9ECB3 /* ZDObfDemo-Bridging-Header.h */,
@@ -174,7 +171,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				599175A91625D61DD2D5B7CE /* DemoKey.swift in Sources */,
 				D7F5C8C2528ACF3E715CDD4A /* ProtectedAPI.swift in Sources */,
 				C0D7B23DCE2F6A475FA55C13 /* ProtectedAPIObjC.m in Sources */,
 				33A3501E5E71B4A24E86DACC /* main.swift in Sources */,

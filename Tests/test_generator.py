@@ -262,6 +262,34 @@ class GeneratorTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertRegex(result.stderr, r"source\.txt:2:11: error: UnsupportedLiteral")
 
+    def test_embed_key_writes_a_masked_owner_only_payload(self):
+        # 内嵌 key 模式的唯一配置点是 ZD_STRING_RUNTIME_KEY_B64；载荷里不能出现连续的明文 key。
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "zdkey.bin"
+            old_umask = os.umask(0o022)
+            try:
+                subprocess.run([str(GENERATOR), "embed-key", "--output", str(output)],
+                               check=True, env=SCAN_ENV)
+            finally:
+                os.umask(old_umask)
+            payload = output.read_bytes()
+            self.assertEqual(len(payload), 72)
+            self.assertEqual(payload[:4], b"ZDKY")
+            self.assertEqual(payload[4:8], bytes([1, 0, 0, 0]))
+            mask, masked = payload[8:40], payload[40:72]
+            self.assertEqual(bytes(a ^ b for a, b in zip(mask, masked)), TEST_KEY)
+            self.assertNotIn(TEST_KEY[:8], payload)
+            self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+            # 缺少 key 时失败，且不留下文件。
+            missing = Path(directory) / "missing.bin"
+            result = subprocess.run(
+                [str(GENERATOR), "embed-key", "--output", str(missing)],
+                capture_output=True, text=True,
+                env={k: v for k, v in os.environ.items() if k != "ZD_STRING_RUNTIME_KEY_B64"},
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(missing.exists())
+
     def test_scanner_rejects_oversized_namespace(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)

@@ -163,6 +163,8 @@ BOOL ZDObfInitializeEmbedded(NSData *key, NSError **error);
 NSString * _Nullable ZDStringDecodeBytes(const unsigned char *bytes, size_t length);
 ```
 
+可选的内嵌 key 模式（`ZD_STRING_EMBED_KEY=1`）：`zdstring-gen embed-key` 读取同一个 `ZD_STRING_RUNTIME_KEY_B64`，写出 72 字节载荷 `"ZDKY" | version u16 LE=1 | flags u16 LE=0 | mask[32] | masked[32]`，其中 `mask = HKDF-SHA256(salt="LMStringProtection/key-mask/v1", ikm=key).expand("mask", 32)`，`masked = key xor mask`。`embed_macho_section.sh` 把它放进 `__DATA,__zdkey`（`no_dead_strip`）。Wrapper 在找到 `__zdstring` 的同一镜像里读取 `__zdkey`，还原 key 后调用 Runtime 并清零。这只是避免 key 以明文字节出现的混淆，不提供额外安全性；默认关闭。
+
 `ZDObfInitializeEmbedded` 通过 `getsectiondata(_dyld_get_image_header(0), "__DATA", "__zdstring", ...)` 找到最终可执行文件的密文 section，再将 pointer、length 和 key 传给 Rust。定位 Mach-O 的平台代码停留在 Apple Wrapper；Rust 仍是纯运行时库。
 
 Swift Wrapper 提供：

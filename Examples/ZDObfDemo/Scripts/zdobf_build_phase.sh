@@ -11,8 +11,11 @@ if [ ! -x "$generator" ] || [ ! -x "$crypto_cli" ]; then
     exit 1
 fi
 
-# ⚠️ Demo 默认 key（0x00...0x1f）。真实项目应由 CI Secret 注入，不要写进仓库或工程设置。
+# ⚠️ 这是整个 Demo 里唯一的 key（0x00...0x1f）。真实项目应由 CI Secret 注入，不要写进仓库或工程设置。
 export ZD_STRING_RUNTIME_KEY_B64="${ZD_STRING_RUNTIME_KEY_B64:-AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=}"
+# 内嵌 key 模式：App 里不再需要写第二份 key，运行时调用 ZDObf.initializeEmbedded() 即可。
+# 代价是（掩码后的）key 与密文同在二进制里，只剩混淆强度的保护；生产环境更推荐运行时传入 key。
+export ZD_STRING_EMBED_KEY=1
 
 generated="$SRCROOT/Generated"
 export ZD_STRING_DERIVED_DIR="${ZD_STRING_DERIVED_DIR:-$DERIVED_FILE_DIR/ZDObf}"

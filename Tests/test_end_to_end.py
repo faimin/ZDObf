@@ -42,6 +42,20 @@ int main(int argc, char **argv) {
 }
 """
 
+# 内嵌 key 模式：App 不持有也不传入任何 key。
+MAIN_BUILTIN_KEY = """#import <Foundation/Foundation.h>
+#import "ZDObf.h"
+NSString *E2ESecret(void);
+int main(void) {
+    @autoreleasepool {
+        NSError *error = nil;
+        if (!ZDObfInitializeEmbeddedWithBuiltInKey(&error)) { printf("init-failed %ld\\n", (long)error.code); return 3; }
+        printf("%s\\n", E2ESecret().UTF8String);
+    }
+    return 0;
+}
+"""
+
 
 @unittest.skipUnless(
     platform.system() == "Darwin" and shutil.which("xcrun") and ZIG and CARGO,
@@ -65,36 +79,78 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"{arguments}\n{result.stderr}")
         return result
 
-    def test_scan_encrypt_embed_link_and_decrypt(self):
+    def prepare(self, temporary, embed_key=False):
+        """运行 Build Phase，返回 (arch, sdk, runtime, generated, derived)。"""
         arch = {"arm64": "arm64", "aarch64": "arm64"}.get(platform.machine(), "x86_64")
         runtime = next(XCFRAMEWORK_MACOS.glob("*.a"))
         sdk = self.run_checked(["xcrun", "--show-sdk-path"]).stdout.strip()
+        source = temporary / "source.mm"
+        generated = temporary / "generated.mm"
+        source.write_text(SOURCE, encoding="utf-8")
+        source_map = temporary / "source-map.txt"
+        source_map.write_text(f"{source}|{generated}|objc\n", encoding="utf-8")
+        derived = temporary / "derived"
+        environment = {
+            **os.environ,
+            "ZD_STRING_NAMESPACE": NAMESPACE,
+            "ZD_STRING_DERIVED_DIR": str(derived),
+            "ZD_STRING_GENERATOR": str(GENERATOR),
+            "ZD_STRING_CRYPTO_CLI": str(self.crypto_cli),
+            "ZD_STRING_RUNTIME_KEY_B64": base64.b64encode(KEY).decode(),
+            "PLATFORM_NAME": "macosx",
+            "ZD_STRING_ARCH": arch,
+            "MACOSX_DEPLOYMENT_TARGET": "15.0",
+        }
+        if embed_key:
+            environment["ZD_STRING_EMBED_KEY"] = "1"
+        self.run_checked([str(BUILD_PHASE), str(source_map)], cwd=ROOT, env=environment)
+
+        # 生成源码里不能残留任何明文，且构建目录不留下明文 Manifest（内嵌 key 模式也不留 key 载荷）。
+        self.assertNotIn(SECRET, generated.read_text(encoding="utf-8"))
+        self.assertIn("ZDStringDecodeBytes", generated.read_text(encoding="utf-8"))
+        self.assertFalse((derived / "strings.manifest.json").exists())
+        self.assertFalse((derived / "zdkey.bin").exists())
+        return arch, sdk, runtime, generated, derived
+
+    def test_embedded_builtin_key_mode(self):
+        # 只在构建环境配置一次 key：运行时无需传 key，key 也不会以明文字节出现在二进制里。
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory)
-            source = temporary / "source.mm"
-            generated = temporary / "generated.mm"
-            source.write_text(SOURCE, encoding="utf-8")
-            source_map = temporary / "source-map.txt"
-            source_map.write_text(f"{source}|{generated}|objc\n", encoding="utf-8")
-            derived = temporary / "derived"
-            environment = {
-                **os.environ,
-                "ZD_STRING_NAMESPACE": NAMESPACE,
-                "ZD_STRING_DERIVED_DIR": str(derived),
-                "ZD_STRING_GENERATOR": str(GENERATOR),
-                "ZD_STRING_CRYPTO_CLI": str(self.crypto_cli),
-                "ZD_STRING_RUNTIME_KEY_B64": base64.b64encode(KEY).decode(),
-                "PLATFORM_NAME": "macosx",
-                "ZD_STRING_ARCH": arch,
-                "MACOSX_DEPLOYMENT_TARGET": "15.0",
-            }
-            self.run_checked([str(BUILD_PHASE), str(source_map)], cwd=ROOT, env=environment)
+            arch, sdk, runtime, generated, derived = self.prepare(temporary, embed_key=True)
+            common = ["xcrun", "clang++", "-std=c++17", "-fobjc-arc", "-arch", arch,
+                      "-isysroot", sdk, "-mmacosx-version-min=15.0"]
+            main = temporary / "main.mm"
+            main.write_text(MAIN_BUILTIN_KEY, encoding="utf-8")
+            app = temporary / "app"
+            self.run_checked(common + [
+                "-I", str(ROOT / "Apple/ObjectiveC"), "-framework", "Foundation",
+                str(main), str(generated), str(derived / "zdstring-section.o"),
+                str(ROOT / "Apple/ObjectiveC/ZDObf.mm"), str(runtime), "-o", str(app),
+            ])
+            binary = app.read_bytes()
+            self.assertNotIn(KEY, binary, "key 不能以明文字节出现")
+            self.assertNotIn(SECRET.encode(), binary)
+            self.assertIn(b"ZDKY", binary)
+            self.assertEqual(self.run_checked([str(app)]).stdout.strip(), SECRET)
 
-            # 生成源码里不能残留任何明文，且构建目录不留下明文 Manifest。
-            self.assertNotIn(SECRET, generated.read_text(encoding="utf-8"))
-            self.assertIn("ZDStringDecodeBytes", generated.read_text(encoding="utf-8"))
-            self.assertFalse((derived / "strings.manifest.json").exists())
+            # 没有开启内嵌 key 模式构建的二进制调用无参初始化，必须失败而不是崩溃。
+            plain_dir = temporary / "plain"
+            plain_dir.mkdir()
+            arch, sdk, runtime, generated, derived = self.prepare(plain_dir, embed_key=False)
+            plain = plain_dir / "app"
+            self.run_checked(common + [
+                "-I", str(ROOT / "Apple/ObjectiveC"), "-framework", "Foundation",
+                str(main), str(generated), str(derived / "zdstring-section.o"),
+                str(ROOT / "Apple/ObjectiveC/ZDObf.mm"), str(runtime), "-o", str(plain),
+            ])
+            result = subprocess.run([str(plain)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("init-failed", result.stdout)
 
+    def test_scan_encrypt_embed_link_and_decrypt(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            arch, sdk, runtime, generated, derived = self.prepare(temporary)
             main = temporary / "main.mm"
             main.write_text(MAIN, encoding="utf-8")
             common = ["xcrun", "clang++", "-std=c++17", "-fobjc-arc", "-arch", arch,

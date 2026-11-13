@@ -3,6 +3,7 @@
 // Rust ABI 仅在实现文件使用，避免公共头依赖源码目录结构。
 #import "../../crates/runtime/include/zd_string_runtime.h"
 
+#include <string.h>
 #import <mach-o/dyld.h>
 #import <mach-o/getsect.h>
 #import <mach-o/loader.h>
@@ -60,33 +61,76 @@ BOOL ZDObfInitializeEmbedded(NSData *key, NSError **error) {
     return YES;
 }
 
-uint32_t zd_string_runtime_init_embedded(const uint8_t *key, size_t keyLength) {
-    if (key == NULL || keyLength != 32) {
-        return ZD_STRING_ERROR_INVALID_ARGUMENT;
-    }
-    // 密文 section 由最终链接注入 App：通常在主可执行文件（dyld 0 号镜像）里；Xcode 的 Debug dylib
-    // （ENABLE_DEBUG_DYLIB）模式下主可执行文件只是壳，section 随业务代码落在 App.debug.dylib 中。
-    // 因此从 0 号镜像开始按加载顺序查找第一个带 __DATA,__zdstring 的镜像。
-    // 不用 _mh_execute_header：它只存在于可执行文件镜像，wrapper 位于动态 framework 时无法链接。
-    // 即使别的镜像带有同名 section，没有构建 key 也无法通过认证，最坏只会初始化失败。
-    unsigned long sectionLength = 0;
-    const uint8_t *section = NULL;
+// 在 dyld 镜像里查找密文 section（以及可选的内嵌 key section，来自同一个镜像）。
+// 通常在主可执行文件（0 号镜像）；Xcode 的 Debug dylib（ENABLE_DEBUG_DYLIB）模式下主可执行文件只是壳，
+// section 随业务代码落在 App.debug.dylib 中，因此从 0 号镜像开始按加载顺序找第一个带 __DATA,__zdstring 的镜像。
+// 不用 _mh_execute_header：它只存在于可执行文件镜像，wrapper 位于动态 framework 时无法链接。
+// 即使别的镜像带有同名 section，没有构建 key 也无法通过认证，最坏只会初始化失败。
+static BOOL ZDObfLocateSections(const uint8_t **blob, unsigned long *blobLength,
+                                const uint8_t **keyBlob, unsigned long *keyBlobLength) {
     const uint32_t imageCount = _dyld_image_count();
     for (uint32_t index = 0; index < imageCount; index++) {
         const ZDMachHeader *header = (const ZDMachHeader *)_dyld_get_image_header(index);
         if (header == NULL) {
             continue;
         }
-        section = getsectiondata(header, "__DATA", "__zdstring", &sectionLength);
-        if (section != NULL && sectionLength != 0) {
-            break;
+        unsigned long length = 0;
+        const uint8_t *section = getsectiondata(header, "__DATA", "__zdstring", &length);
+        if (section != NULL && length != 0) {
+            *blob = section;
+            *blobLength = length;
+            *keyBlob = getsectiondata(header, "__DATA", "__zdkey", keyBlobLength);
+            return YES;
         }
-        section = NULL;
     }
-    if (section == NULL) {
+    return NO;
+}
+
+uint32_t zd_string_runtime_init_embedded(const uint8_t *key, size_t keyLength) {
+    if (key == NULL || keyLength != 32) {
+        return ZD_STRING_ERROR_INVALID_ARGUMENT;
+    }
+    const uint8_t *section = NULL, *keySection = NULL;
+    unsigned long sectionLength = 0, keySectionLength = 0;
+    if (!ZDObfLocateSections(&section, &sectionLength, &keySection, &keySectionLength)) {
         return ZD_STRING_ERROR_MALFORMED_BLOB;
     }
     return zd_string_runtime_init(section, (size_t)sectionLength, key, keyLength);
+}
+
+// 内嵌 key 模式（构建时 ZD_STRING_EMBED_KEY=1）：载荷为 "ZDKY" | version u16 | flags u16 | mask[32] | masked[32]，
+// key = mask xor masked。这只是避免 key 以明文字节出现的混淆，不是加密。
+uint32_t zd_string_runtime_init_embedded_builtin_key(void) {
+    const uint8_t *section = NULL, *keySection = NULL;
+    unsigned long sectionLength = 0, keySectionLength = 0;
+    if (!ZDObfLocateSections(&section, &sectionLength, &keySection, &keySectionLength)) {
+        return ZD_STRING_ERROR_MALFORMED_BLOB;
+    }
+    if (keySection == NULL || keySectionLength != 72 || memcmp(keySection, "ZDKY", 4) != 0 ||
+        keySection[4] != 1 || keySection[5] != 0 || keySection[6] != 0 || keySection[7] != 0) {
+        return ZD_STRING_ERROR_MALFORMED_BLOB;
+    }
+    uint8_t key[32];
+    for (size_t index = 0; index < sizeof(key); index++) {
+        key[index] = keySection[8 + index] ^ keySection[40 + index];
+    }
+    uint32_t code = zd_string_runtime_init(section, (size_t)sectionLength, key, sizeof(key));
+    // volatile 写入避免编译器把对即将离开作用域的 key 的清零优化掉。
+    for (volatile uint8_t *cursor = key; cursor < key + sizeof(key); cursor++) {
+        *cursor = 0;
+    }
+    return code;
+}
+
+BOOL ZDObfInitializeEmbeddedWithBuiltInKey(NSError **error) {
+    uint32_t code = zd_string_runtime_init_embedded_builtin_key();
+    if (code != ZD_STRING_ERROR_OK) {
+        if (error != NULL) {
+            *error = ZDObfError(code);
+        }
+        return NO;
+    }
+    return YES;
 }
 
 static uint32_t ZDObfCaptureCallback(const uint8_t *bytes, size_t length, void *context) {

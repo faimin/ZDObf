@@ -79,9 +79,8 @@ xcodebuild -project Examples/ZDObfDemo/ZDObfDemo.xcodeproj -scheme ZDObfDemo \
 | --- | --- |
 | `App/Protected/ProtectedAPI.swift`、`ProtectedAPIObjC.m` | 含 `ZDString(...)` 的原始源码；**不参与编译** |
 | `Generated/`（构建时生成，已 gitignore） | Build Phase 生成的、只含 ID 的源码；**只有它们进入 Compile Sources** |
-| `App/main.swift` | 启动时初始化，然后使用受保护字符串；演示抛错查询 API |
-| `App/DemoKey.swift` | ⚠️ 仅用于 Demo 的固定 key，真实 App 不要这样做 |
-| `Scripts/zdobf_build_phase.sh` | 写 source-map 并调用 `scripts/xcode_build_phase.sh` |
+| `App/main.swift` | 启动时调用无参的 `ZDObf.initializeEmbedded()`，然后使用受保护字符串；演示抛错查询 API |
+| `Scripts/zdobf_build_phase.sh` | 写 source-map、调用 `scripts/xcode_build_phase.sh`；⚠️ 这里是整个 Demo **唯一**的 key（仅供演示），并开启 `ZD_STRING_EMBED_KEY=1` |
 | `project.yml` | XcodeGen 配置；`xcodegen generate` 可重新生成 `.xcodeproj`（已提交，无需安装 XcodeGen） |
 
 工程里的关键设置与“Xcode 接入”一节一致：`ZD_STRING_NAMESPACE`、`ZD_STRING_DERIVED_DIR`、`ZD_STRING_SECTION_OBJECT`，`OTHER_LDFLAGS` 追加 section object，`ENABLE_USER_SCRIPT_SANDBOXING = NO`。依赖通过本地 Swift Package 引入（`ZDObfKit` 和 `ZDObfKitObjC`），Objective-C 里用 `@import ZDObfKitObjC;`。
@@ -166,6 +165,29 @@ export ZD_STRING_RUNTIME_KEY_B64="$(openssl rand -base64 32)"
 正式环境应从 CI Secret Manager 注入。不要把 key 写入源码、Scheme、`.xcconfig`、Podfile、Bundle 或 README；App 初始化时必须取得同一份原始 32-byte key。
 
 上面的随机命令只用于首次创建开发密钥；应将其保存到自己的密钥管理系统，后续构建复用并按发布版本管理。运行时收到的是 Base64 文本时，需要先解码为 `Data` / `NSData`，不能把 Base64 字符串的 UTF-8 字节直接作为 key。组件不自动把构建环境变量传给 App，也不提供密钥获取服务。
+
+### 只配置一处：内嵌 key 模式（可选）
+
+默认情况下 key 要在两处保持一致：构建环境的 `ZD_STRING_RUNTIME_KEY_B64`，和 App 运行时传给 `initializeEmbedded(key:)` 的值。如果更看重省事，可以只在构建环境配置一处：
+
+```sh
+export ZD_STRING_RUNTIME_KEY_B64="$(openssl rand -base64 32)"   # 唯一的 key 配置点
+export ZD_STRING_EMBED_KEY=1
+```
+
+构建时 `zdstring-gen embed-key` 会把 key 与由 key 派生的 32 字节掩码异或后写入 `__DATA,__zdkey` section，运行时无参初始化即可：
+
+```swift
+try ZDObf.initializeEmbedded()                      // Swift
+```
+
+```objc
+ZDObfInitializeEmbeddedWithBuiltInKey(&error);      // Objective-C
+```
+
+> ⚠️ **安全取舍**：此时 key（仅经异或掩码，不是加密）和密文在同一个二进制里，攻击者拿到二进制就能还原 key 并解密全部字符串，保护强度只相当于混淆。需要把 key 与密文分离时，不要开启 `ZD_STRING_EMBED_KEY`，改用 `initializeEmbedded(key:)` 并从 Keychain 或服务端取得 key。
+>
+> 只开了内嵌 key 的构建才有 `__zdkey`；用无参初始化调用一个没有该 section 的二进制会返回 `malformedBlob`。构建目录里的临时 key 载荷（`zdkey.bin`）会在构建结束时删除。更换 key 只需改环境变量并重新构建，不需要再改 App 代码。
 
 ### 更换 Runtime key
 
@@ -397,6 +419,7 @@ python3 Tools/zdstring_catalog_codegen.py \
 | 变量 | 默认值或用途 |
 | --- | --- |
 | `ZD_STRING_RUNTIME_KEY_B64` | 必填；Base64 解码后 32 bytes。扫描阶段也用它派生稳定 ID，缺失时扫描失败 |
+| `ZD_STRING_EMBED_KEY` | 设为 `1` 时把（掩码后的）key 内嵌进二进制，运行时可无参初始化；默认关闭，见“内嵌 key 模式” |
 | `ZD_STRING_NAMESPACE` | 默认 `PRODUCT_BUNDLE_IDENTIFIER` |
 | `ZD_STRING_GENERATOR` / `ZD_STRING_CRYPTO_CLI` | 默认本仓库内构建的 host 工具 |
 | `ZD_STRING_CATALOG_MAPPING` | 可选；目录模式 JSON |

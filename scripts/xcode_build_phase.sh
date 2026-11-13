@@ -42,6 +42,10 @@ fi
 mkdir -p "$derived_dir/manifests"
 merged_manifest="$derived_dir/strings.manifest.json"
 blob="$derived_dir/strings.zdstr"
+# Manifest 含全部明文字符串；无论成功与否都不留在 DerivedData，调试时可设 ZD_STRING_KEEP_MANIFESTS=1 保留。
+if [ "${ZD_STRING_KEEP_MANIFESTS:-0}" != "1" ]; then
+    trap 'rm -rf "$derived_dir/manifests" "$merged_manifest"' EXIT
+fi
 set -- merge-manifests --output "$merged_manifest"
 entry_index=0
 

@@ -3,7 +3,7 @@ mod tests {
     // 固定测试向量覆盖 UTF-8、NUL、篡改和两种 nonce 行为。
     use crate::{
         NonceMode, RuntimeError, StringEntry, build_blob, catalog_string_id, decrypt_by_id,
-        parse_blob,
+        parse_blob, string_id,
     };
 
     const KEY: [u8; 32] = [0x11; 32];
@@ -76,15 +76,15 @@ mod tests {
     #[test]
     fn empty_catalog_cannot_bypass_blob_authentication() {
         // 没有任何 AEAD 记录时无法验证 key，因此生成端与解析端都拒绝空目录。
-        assert!(
+        assert_eq!(
             build_blob(
                 &KEY,
                 APP_NAMESPACE.as_bytes(),
                 &SALT,
                 &[],
                 NonceMode::Deterministic
-            )
-            .is_err()
+            ),
+            Err(RuntimeError::EmptyCatalog)
         );
         let total = crate::HEADER_LEN + APP_NAMESPACE.len();
         let mut empty = crate::encode_header(&SALT, APP_NAMESPACE.len(), 0, total, total, total, 0);
@@ -118,7 +118,7 @@ mod tests {
                 &parsed,
                 &KEY,
                 APP_NAMESPACE.as_bytes(),
-                entries[0].id(APP_NAMESPACE.as_bytes())
+                entries[0].id(&KEY, APP_NAMESPACE.as_bytes())
             )
             .unwrap(),
             b"hello"
@@ -128,7 +128,7 @@ mod tests {
                 &parsed,
                 &KEY,
                 APP_NAMESPACE.as_bytes(),
-                entries[1].id(APP_NAMESPACE.as_bytes())
+                entries[1].id(&KEY, APP_NAMESPACE.as_bytes())
             )
             .unwrap(),
             "e\u{301}".as_bytes()
@@ -138,7 +138,7 @@ mod tests {
                 &parsed,
                 &KEY,
                 APP_NAMESPACE.as_bytes(),
-                entries[2].id(APP_NAMESPACE.as_bytes())
+                entries[2].id(&KEY, APP_NAMESPACE.as_bytes())
             )
             .unwrap(),
             b"nul\0tail"
@@ -191,7 +191,7 @@ mod tests {
 
         assert_ne!(first, second);
         let parsed = parse_blob(&first).unwrap();
-        let id = entries[0].id(APP_NAMESPACE.as_bytes());
+        let id = entries[0].id(&KEY, APP_NAMESPACE.as_bytes());
         assert_eq!(
             decrypt_by_id(&parsed, &KEY, APP_NAMESPACE.as_bytes(), id).unwrap(),
             b"same"
@@ -215,7 +215,7 @@ mod tests {
                 &parsed,
                 &KEY,
                 APP_NAMESPACE.as_bytes(),
-                entries[0].id(APP_NAMESPACE.as_bytes())
+                entries[0].id(&KEY, APP_NAMESPACE.as_bytes())
             )
             .unwrap(),
             b""
@@ -242,7 +242,7 @@ mod tests {
         let mut tampered = blob;
         *tampered.last_mut().unwrap() ^= 1;
         let parsed = parse_blob(&tampered).unwrap();
-        let id = entries[0].id(APP_NAMESPACE.as_bytes());
+        let id = entries[0].id(&KEY, APP_NAMESPACE.as_bytes());
         assert!(matches!(
             decrypt_by_id(&parsed, &KEY, APP_NAMESPACE.as_bytes(), id),
             Err(RuntimeError::AuthenticationFailed)
@@ -275,8 +275,8 @@ mod tests {
         .unwrap();
 
         assert_ne!(first, second);
-        assert_eq!(entry.id(first_namespace), id);
-        assert_eq!(entry.id(second_namespace), id);
+        assert_eq!(entry.id(&KEY, first_namespace), id);
+        assert_eq!(entry.id(&KEY, second_namespace), id);
         let first_parsed = parse_blob(&first).unwrap();
         let second_parsed = parse_blob(&second).unwrap();
         assert_eq!(
@@ -287,5 +287,74 @@ mod tests {
             decrypt_by_id(&second_parsed, &KEY, second_namespace, id).unwrap(),
             path.as_bytes()
         );
+    }
+    #[test]
+    fn string_ids_match_known_answers() {
+        // 固定向量由独立的 Python hmac/hashlib HKDF 实现计算；Zig 扫描器侧在 Tests/test_generator.py
+        // 和 Generator 单元测试里校验同一组值，任何一侧的派生规则漂移都会让构建产物无法解密。
+        assert_eq!(
+            string_id(&KEY, b"com.example.scanner", b"secret"),
+            0x26e8_6c4a_43c0_723d
+        );
+        assert_eq!(
+            string_id(&KEY, b"com.example.scanner", b""),
+            0x4604_befa_00d3_c591
+        );
+        assert_eq!(catalog_string_id(b"/v1/token"), 0x52a6_5564_87d8_12ea);
+    }
+
+    #[test]
+    fn string_ids_depend_on_key_and_namespace() {
+        // 没有 key 就算不出 ID，换 key 或 namespace 都会得到不同 ID。
+        let base = string_id(&KEY, b"com.example.a", b"secret");
+        assert_ne!(base, string_id(&[0x12; 32], b"com.example.a", b"secret"));
+        assert_ne!(base, string_id(&KEY, b"com.example.b", b"secret"));
+        assert_ne!(base, string_id(&KEY, b"com.example.a", b"secret2"));
+    }
+
+    #[test]
+    fn malformed_blobs_are_rejected_without_panicking() {
+        let entries = vec![StringEntry::new("alpha"), StringEntry::new("beta")];
+        let blob = build_blob(
+            &KEY,
+            APP_NAMESPACE.as_bytes(),
+            &SALT,
+            &entries,
+            NonceMode::Deterministic,
+        )
+        .unwrap();
+        assert!(parse_blob(&blob).is_ok());
+
+        // 任意长度的截断都必须是可恢复的错误。
+        for length in 0..blob.len() {
+            assert!(parse_blob(&blob[..length]).is_err(), "length {length}");
+        }
+        // magic、版本、算法、flags、保留字段逐项破坏。
+        for (offset, value) in [(0usize, 0xff), (4, 0xff), (6, 0xff), (9, 0x01), (46, 0x01)] {
+            let mut broken = blob.clone();
+            broken[offset] ^= value;
+            assert_eq!(
+                parse_blob(&broken).err(),
+                Some(RuntimeError::MalformedBlob),
+                "offset {offset}"
+            );
+        }
+        // 额外尾部字节与 total_length 不一致。
+        let mut extended = blob.clone();
+        extended.push(0);
+        assert!(parse_blob(&extended).is_err());
+        // 单字节翻转遍历：解析要么失败，要么成功后解密不 panic。
+        for position in 0..blob.len() {
+            let mut mutated = blob.clone();
+            mutated[position] ^= 0x80;
+            if let Ok(parsed) = parse_blob(&mutated) {
+                let _ = decrypt_by_id(
+                    &parsed,
+                    &KEY,
+                    APP_NAMESPACE.as_bytes(),
+                    entries[0].id(&KEY, APP_NAMESPACE.as_bytes()),
+                );
+            }
+        }
     }
 }

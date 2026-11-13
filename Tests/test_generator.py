@@ -1,4 +1,6 @@
+import base64
 import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -14,6 +16,17 @@ GENERATOR = GENERATOR_ROOT / "zig-out" / "bin" / "zdstring-gen"
 CATALOG_ID_DOMAIN = b"LMStringProtection/catalog-id/v1"
 # 优先使用显式工具链，其次使用 PATH，避免测试绑定开发者机器目录。
 ZIG = os.environ.get("ZD_STRING_ZIG") or shutil.which("zig")
+# 扫描阶段的稳定 ID 由构建 key 派生，所有 scan 调用都必须提供 key。
+TEST_KEY = bytes([0x11]) * 32
+SCAN_ENV = {**os.environ, "ZD_STRING_RUNTIME_KEY_B64": base64.b64encode(TEST_KEY).decode()}
+
+
+def derive_id(key, namespace, text):
+    """独立的 HKDF-SHA256 参考实现，用来校验 Rust 与 Zig 两侧的 ID 派生。"""
+    prk = hmac.new(b"LMStringProtection/id/v2", key, hashlib.sha256).digest()
+    info = len(namespace).to_bytes(2, "little") + namespace + text
+    block = hmac.new(prk, info + b"\x01", hashlib.sha256).digest()
+    return block[:8]
 
 
 class GeneratorTests(unittest.TestCase):
@@ -34,7 +47,7 @@ class GeneratorTests(unittest.TestCase):
                 [str(GENERATOR), "scan", "--input", str(input_path),
                  "--output", str(output_path), "--manifest", str(manifest_path),
                  "--language", language, "--namespace", "com.example.scanner"],
-                capture_output=True, text=True,
+                capture_output=True, text=True, env=SCAN_ENV,
             )
             if result.returncode != 0:
                 return result, None, None
@@ -175,6 +188,114 @@ class GeneratorTests(unittest.TestCase):
                 result, _, manifest = self.scan_source(source, language)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(manifest["strings"][0]["text"], expected)
+
+    def test_scanner_rewrites_after_apostrophes_in_objc_directives_and_text(self):
+        # 预处理行或孤立撇号不能被当成字符常量，否则后续 ZDString 会静默漏改。
+        cases = [
+            "#pragma mark - User's info\n",
+            "  #  warning don't ship\n",
+            "int n = 1'000;\n",
+            "// it's a comment\n",
+        ]
+        for prefix in cases:
+            with self.subTest(prefix=prefix):
+                source = prefix + 'NSString *a = ZDString(@"secret1");\n' \
+                    'NSString *b = ZDString(@"secret2");\n'
+                result, rewritten, manifest = self.scan_source(source, "objc")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("secret1", rewritten)
+                self.assertNotIn("secret2", rewritten)
+                self.assertEqual(
+                    [entry["text"] for entry in manifest["strings"]], ["secret1", "secret2"]
+                )
+
+    def test_scanner_ids_match_rust_known_answers(self):
+        # 与 crates/crypto-core 的固定向量同源（Python hmac 独立计算），防止两侧 ID 实现漂移。
+        result, rewritten, manifest = self.scan_source('let value = ZDString("secret")\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = derive_id(TEST_KEY, b"com.example.scanner", b"secret")
+        self.assertEqual(expected.hex(), "3d72c0434a6ce826")
+        self.assertIn(", ".join(f"0x{byte:02x}" for byte in expected), rewritten)
+
+    def test_scanner_ids_depend_on_key_and_fail_closed_without_one(self):
+        # 没有 key 不能退化成可离线验证的无密钥 ID；换 key 必须得到不同 ID。
+        _, first, _ = self.scan_source('let value = ZDString("secret")\n')
+        other_env = {**SCAN_ENV, "ZD_STRING_RUNTIME_KEY_B64": base64.b64encode(bytes([0x12]) * 32).decode()}
+        for label, env, should_succeed in (
+            ("other-key", other_env, True),
+            ("missing-key", {k: v for k, v in os.environ.items() if k != "ZD_STRING_RUNTIME_KEY_B64"}, False),
+            ("short-key", {**SCAN_ENV, "ZD_STRING_RUNTIME_KEY_B64": base64.b64encode(b"short").decode()}, False),
+            ("bad-base64", {**SCAN_ENV, "ZD_STRING_RUNTIME_KEY_B64": "!!!"}, False),
+        ):
+            with self.subTest(label):
+                with tempfile.TemporaryDirectory() as directory:
+                    temporary = Path(directory)
+                    (temporary / "in.swift").write_text('let value = ZDString("secret")\n', encoding="utf-8")
+                    result = subprocess.run(
+                        [str(GENERATOR), "scan", "--input", str(temporary / "in.swift"),
+                         "--output", str(temporary / "out.swift"), "--manifest", str(temporary / "m.json"),
+                         "--language", "swift", "--namespace", "com.example.scanner"],
+                        capture_output=True, text=True, env=env,
+                    )
+                    if should_succeed:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertNotEqual((temporary / "out.swift").read_text(encoding="utf-8"), first)
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse((temporary / "out.swift").exists())
+
+    def test_scanner_replaces_comments_with_whitespace(self):
+        # 注释等价于空白，剥离后不能让相邻 token 粘连。
+        source = 'int v = a/**/b; // tail\nNSString *s = ZDString(@"x");\n'
+        result, rewritten, _ = self.scan_source(source, "objc")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("a b;", rewritten)
+        self.assertNotIn("tail", rewritten)
+
+    def test_scanner_errors_report_file_line_and_column(self):
+        # 不支持的写法必须指出位置，而不是只给 Zig 栈追踪。
+        source = 'let ok = 1\nlet bad = ZDString("a" + b)\n'
+        result, _, _ = self.scan_source(source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertRegex(result.stderr, r"source\.txt:2:11: error: UnsupportedLiteral")
+
+    def test_scanner_rejects_oversized_namespace(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            (temporary / "in.swift").write_text('let a = ZDString("x")', encoding="utf-8")
+            result = subprocess.run(
+                [str(GENERATOR), "scan", "--input", str(temporary / "in.swift"),
+                 "--output", str(temporary / "o"), "--manifest", str(temporary / "m"),
+                 "--language", "swift", "--namespace", "n" * 257],
+                capture_output=True, text=True, env=SCAN_ENV,
+            )
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_scanner_writes_plaintext_manifest_owner_only(self):
+        # Manifest 含全部明文，不能按默认 umask 变成组/其他用户可读。
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            input_path = temporary / "source.swift"
+            input_path.write_text('let value = ZDString("secret")\n', encoding="utf-8")
+            manifest_path = temporary / "manifest.json"
+            merged_path = temporary / "merged.json"
+            old_umask = os.umask(0o022)
+            try:
+                subprocess.run(
+                    [str(GENERATOR), "scan", "--input", str(input_path),
+                     "--output", str(temporary / "out.swift"), "--manifest", str(manifest_path),
+                     "--language", "swift", "--namespace", "com.example.scanner"],
+                    check=True, env=SCAN_ENV,
+                )
+                subprocess.run(
+                    [str(GENERATOR), "merge-manifests", "--input", str(manifest_path),
+                     "--output", str(merged_path)],
+                    check=True,
+                )
+            finally:
+                os.umask(old_umask)
+            for path in (manifest_path, merged_path):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600, path)
 
     def test_catalog_manifest_uses_stable_path_ids(self):
         # 兼容目录的查询 ID 必须与 App namespace 解耦，后续由 Blob 加密层实现 App 差异。

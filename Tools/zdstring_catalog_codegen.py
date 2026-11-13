@@ -10,6 +10,24 @@ from pathlib import Path
 
 CATALOG_ID_DOMAIN = b"LMStringProtection/catalog-id/v1"
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# 这些名字作为 ObjC 类方法或 Swift 静态属性会冲突（语言关键字，或覆盖 NSObject 的类方法）。
+RESERVED_IDENTIFIERS = frozenset(
+    {
+        # C / ObjC / C++ 关键字
+        "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else",
+        "enum", "extern", "float", "for", "goto", "if", "inline", "int", "long", "register",
+        "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union",
+        "unsigned", "void", "volatile", "while", "id", "self", "super", "nil", "Nil", "BOOL", "YES", "NO",
+        "class", "new", "delete", "namespace", "template", "this", "true", "false",
+        # Swift 关键字
+        "associatedtype", "deinit", "extension", "fileprivate", "func", "import", "init", "internal",
+        "let", "open", "operator", "private", "protocol", "public", "rethrows", "subscript", "var",
+        "where", "guard", "defer", "in", "is", "as", "try", "throw", "throws", "Type", "Self",
+        # NSObject 类方法
+        "alloc", "load", "initialize", "copy", "mutableCopy", "description", "debugDescription",
+        "hash", "superclass", "dealloc", "release", "retain", "autorelease", "isa",
+    }
+)
 
 
 def catalog_id(value: str) -> int:
@@ -26,6 +44,8 @@ def validate_mapping(mapping: object) -> list[tuple[str, str]]:
     for identifier, value in mapping.items():
         if not isinstance(identifier, str) or not IDENTIFIER_PATTERN.fullmatch(identifier):
             raise ValueError(f"invalid catalog identifier: {identifier!r}")
+        if identifier in RESERVED_IDENTIFIERS:
+            raise ValueError(f"catalog identifier is a reserved word: {identifier!r}")
         if not isinstance(value, str) or not value or "\n" in value or "\r" in value:
             raise ValueError(f"invalid catalog value for {identifier!r}")
         entries.append((identifier, value))

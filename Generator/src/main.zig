@@ -5,6 +5,7 @@ const std = @import("std");
 const max_manifest_size = 64 * 1024 * 1024;
 const max_blob_size = 64 * 1024 * 1024;
 const max_string_size = 1024 * 1024;
+const max_namespace_size = 256;
 
 const ManifestString = struct {
     text: []const u8,
@@ -31,7 +32,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const argv = try init.minimal.args.toSlice(allocator);
     if (argv.len > 1 and std.mem.eql(u8, argv[1], "scan")) {
-        try run_scan(allocator, init.io, argv[2..]);
+        try run_scan(allocator, init.io, init.environ_map, argv[2..]);
         return;
     }
     if (argv.len > 1 and std.mem.eql(u8, argv[1], "merge-manifests")) {
@@ -47,7 +48,7 @@ pub fn main(init: std.process.Init) !void {
     try validate_manifest(allocator, manifest);
     const blob = try run_crypto_cli(allocator, init.io, arguments, manifest);
     if (blob.len == 0 or blob.len > max_blob_size) return error.InvalidBlobOutput;
-    try write_output_atomically(allocator, init.io, arguments.output_path, blob);
+    try write_output_atomically(allocator, init.io, arguments.output_path, blob, .public);
 }
 
 const ScanArguments = struct {
@@ -119,7 +120,7 @@ fn run_catalog_manifest(allocator: std.mem.Allocator, io: std.Io, args: []const 
     }
     if (entries.items.len == 0) return error.InvalidCatalogMapping;
     const manifest = try build_manifest_json(allocator, arguments.namespace, entries.items);
-    try write_output_atomically(allocator, io, arguments.output_path, manifest);
+    try write_output_atomically(allocator, io, arguments.output_path, manifest, .private);
 }
 
 fn parse_scan_arguments(args: []const []const u8) !ScanArguments {
@@ -144,7 +145,7 @@ fn parse_scan_arguments(args: []const []const u8) !ScanArguments {
         }
         index += 2;
     }
-    if (result.namespace.len == 0 or
+    if (result.namespace.len == 0 or result.namespace.len > max_namespace_size or
         !(std.mem.eql(u8, result.language, "swift") or std.mem.eql(u8, result.language, "objc")))
     {
         return error.InvalidScanArguments;
@@ -152,17 +153,27 @@ fn parse_scan_arguments(args: []const []const u8) !ScanArguments {
     return result;
 }
 
-fn run_scan(allocator: std.mem.Allocator, io: std.Io, args: []const []const u8) !void {
+fn run_scan(allocator: std.mem.Allocator, io: std.Io, environ_map: *std.process.Environ.Map, args: []const []const u8) !void {
     // 扫描阶段只生成编译器可见的 ID 调用和构建期 Manifest，不在源码旁保存明文副本。
     const arguments = try parse_scan_arguments(args);
+    // 稳定 ID 由构建 key 派生，key 缺失时必须失败，不能退化成可离线验证的无密钥哈希。
+    var key = try read_runtime_key(environ_map);
+    defer std.crypto.secureZero(u8, &key);
     const source = try read_manifest(allocator, io, arguments.input_path);
     var rewritten: std.ArrayList(u8) = .empty;
     var entries: std.ArrayList(ScanEntry) = .empty;
     var cursor: usize = 0;
-    while (try find_zd_string(source, cursor, arguments.language)) |token_start| {
-        const parsed = try parse_literal(source, token_start, arguments.language, allocator);
+    while (find_zd_string(source, cursor, arguments.language) catch |err| {
+        report_scan_error(arguments.input_path, source, err);
+        return err;
+    }) |token_start| {
+        scan_error_position = token_start;
+        const parsed = parse_literal(source, token_start, arguments.language, allocator) catch |err| {
+            report_scan_error(arguments.input_path, source, err);
+            return err;
+        };
         try rewritten.appendSlice(allocator, source[cursor..token_start]);
-        const id = string_id(arguments.namespace, parsed.text);
+        const id = try string_id(allocator, &key, arguments.namespace, parsed.text);
         const replacement = try build_decode_expression(allocator, id, arguments.language);
         try rewritten.appendSlice(allocator, replacement);
         try entries.append(allocator, .{ .text = parsed.text, .source = arguments.input_path });
@@ -170,9 +181,9 @@ fn run_scan(allocator: std.mem.Allocator, io: std.Io, args: []const []const u8) 
     }
     try rewritten.appendSlice(allocator, source[cursor..]);
     const sanitized = try strip_comments(allocator, rewritten.items, arguments.language);
-    try write_output_atomically(allocator, io, arguments.output_path, sanitized);
+    try write_output_atomically(allocator, io, arguments.output_path, sanitized, .public);
     const manifest = try build_manifest_json(allocator, arguments.namespace, entries.items);
-    try write_output_atomically(allocator, io, arguments.manifest_path, manifest);
+    try write_output_atomically(allocator, io, arguments.manifest_path, manifest, .private);
 }
 
 fn run_merge_manifests(allocator: std.mem.Allocator, io: std.Io, args: []const []const u8) !void {
@@ -217,16 +228,33 @@ fn run_merge_manifests(allocator: std.mem.Allocator, io: std.Io, args: []const [
         }
     }
     const merged = try build_manifest_json(allocator, namespace orelse return error.InvalidMergeArguments, entries.items);
-    try write_output_atomically(allocator, io, destination, merged);
+    try write_output_atomically(allocator, io, destination, merged, .private);
 }
 
 const ParsedLiteral = struct { text: []const u8, end: usize };
+
+// 记录最近一次词法单元的起点，扫描失败时据此给出 文件:行:列，否则报错只有 Zig 栈追踪。
+var scan_error_position: usize = 0;
+
+fn report_scan_error(path: []const u8, source: []const u8, err: anyerror) void {
+    const position = @min(scan_error_position, source.len);
+    var line: usize = 1;
+    var line_start: usize = 0;
+    for (source[0..position], 0..) |byte, offset| {
+        if (byte == '\n') {
+            line += 1;
+            line_start = offset + 1;
+        }
+    }
+    std.debug.print("{s}:{d}:{d}: error: {s} (unsupported or unterminated literal near here)\n", .{ path, line, position - line_start + 1, @errorName(err) });
+}
 
 fn find_zd_string(source: []const u8, start: usize, language: []const u8) !?usize {
     // 按语言跳过完整词法单元，避免 raw/multiline 文本和嵌套注释中的示例被改写。
     const swift = std.mem.eql(u8, language, "swift");
     var index = start;
     while (index < source.len) {
+        scan_error_position = index;
         if (try skip_noncode(source, index, swift, 0)) |end| {
             index = end;
         } else if (is_protected_string(source, index)) {
@@ -380,11 +408,15 @@ fn skip_source_string(source: []const u8, start: usize, swift: bool, depth: usiz
     if (quote_start >= source.len) return null;
     const quote = source[quote_start];
     if (quote != '"' and !(quote == '\'' and !swift)) return null;
+    // 预处理行（#pragma mark - User's info、#error 等）里的 ' 只是普通文本，不是字符常量。
+    if (quote == '\'' and is_in_preprocessor_line(source, start)) return null;
     if (depth >= 128) return error.UnsupportedLiteral;
     const hashes = quote_start - start;
     const quotes: usize = if (swift and std.mem.startsWith(u8, source[quote_start..], "\"\"\"")) 3 else 1;
     var index = quote_start + quotes;
     while (index < source.len) {
+        // 字符常量不能跨行；撇号（如 C++14 数字分隔符之外的孤立 '）遇到换行说明它不是字面量起点。
+        if (quote == '\'' and (source[index] == '\n' or source[index] == '\r')) return null;
         if (source[index] == quote) {
             var end = index;
             while (end < source.len and end - index < quotes and source[end] == quote) : (end += 1) {}
@@ -403,6 +435,15 @@ fn skip_source_string(source: []const u8, start: usize, swift: bool, depth: usiz
         }
     }
     return error.UnsupportedLiteral;
+}
+
+fn is_in_preprocessor_line(source: []const u8, position: usize) bool {
+    // 向前回溯到行首：首个非空白字符是 # 即视为预处理指令行。
+    var line_start = position;
+    while (line_start > 0 and source[line_start - 1] != '\n' and source[line_start - 1] != '\r') : (line_start -= 1) {}
+    var index = line_start;
+    while (index < position and (source[index] == ' ' or source[index] == '\t')) : (index += 1) {}
+    return index < position and source[index] == '#';
 }
 
 fn matches_hashes(source: []const u8, start: usize, count: usize) bool {
@@ -505,6 +546,8 @@ fn strip_comments(allocator: std.mem.Allocator, source: []const u8, language: []
     while (index < source.len) {
         if (std.mem.startsWith(u8, source[index..], "//")) {
             const end = (try skip_noncode(source, index, swift, 0)) orelse return error.UnsupportedLiteral;
+            // 注释在 C 和 Swift 中等价于空白；替换成一个空格，避免 a/**/b 粘连成 ab。
+            try output.append(allocator, ' ');
             for (source[index..end]) |byte| {
                 if (byte == '\n' or byte == '\r') try output.append(allocator, byte);
             }
@@ -513,6 +556,8 @@ fn strip_comments(allocator: std.mem.Allocator, source: []const u8, language: []
         }
         if (std.mem.startsWith(u8, source[index..], "/*")) {
             const end = (try skip_noncode(source, index, swift, 0)) orelse return error.UnsupportedLiteral;
+            // 注释在 C 和 Swift 中等价于空白；替换成一个空格，避免 a/**/b 粘连成 ab。
+            try output.append(allocator, ' ');
             for (source[index..end]) |byte| {
                 if (byte == '\n' or byte == '\r') try output.append(allocator, byte);
             }
@@ -530,18 +575,31 @@ fn strip_comments(allocator: std.mem.Allocator, source: []const u8, language: []
     return try output.toOwnedSlice(allocator);
 }
 
-fn string_id(namespace: []const u8, bytes: []const u8) u64 {
-    // 与 Rust crypto-core 完全复用 ID domain、长度编码和 little-endian 截断规则。
-    var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    hash.update("LMStringProtection/id/v1");
+fn read_runtime_key(environ_map: *std.process.Environ.Map) ![32]u8 {
+    const encoded = environ_map.get("ZD_STRING_RUNTIME_KEY_B64") orelse return error.MissingRuntimeKey;
+    var key: [32]u8 = undefined;
+    const decoder = std.base64.standard.Decoder;
+    const size = decoder.calcSizeForSlice(encoded) catch return error.InvalidRuntimeKey;
+    if (size != key.len) return error.InvalidRuntimeKey;
+    decoder.decode(&key, encoded) catch return error.InvalidRuntimeKey;
+    return key;
+}
+
+fn string_id(allocator: std.mem.Allocator, key: []const u8, namespace: []const u8, bytes: []const u8) !u64 {
+    // 与 Rust crypto-core 完全一致：HKDF-SHA256(salt = ID_SALT, ikm = key)，
+    // info = len(namespace) as u16 LE || namespace || 明文，取 8 字节按 little-endian 解释。
+    const Hkdf = std.crypto.kdf.hkdf.HkdfSha256;
+    const prk = Hkdf.extract("LMStringProtection/id/v2", key);
+    var info: std.ArrayList(u8) = .empty;
+    defer info.deinit(allocator);
     var length_bytes: [2]u8 = undefined;
     std.mem.writeInt(u16, &length_bytes, @intCast(namespace.len), .little);
-    hash.update(&length_bytes);
-    hash.update(namespace);
-    hash.update(bytes);
-    var digest: [32]u8 = undefined;
-    hash.final(&digest);
-    return std.mem.readInt(u64, digest[0..8], .little);
+    try info.appendSlice(allocator, &length_bytes);
+    try info.appendSlice(allocator, namespace);
+    try info.appendSlice(allocator, bytes);
+    var output: [8]u8 = undefined;
+    Hkdf.expand(&output, info.items, prk);
+    return std.mem.readInt(u64, &output, .little);
 }
 
 fn catalog_string_id(bytes: []const u8) u64 {
@@ -700,7 +758,9 @@ fn run_crypto_cli(allocator: std.mem.Allocator, io: std.Io, arguments: Arguments
     return output;
 }
 
-fn write_output_atomically(allocator: std.mem.Allocator, io: std.Io, path: []const u8, bytes: []const u8) !void {
+const OutputKind = enum { public, private };
+
+fn write_output_atomically(allocator: std.mem.Allocator, io: std.Io, path: []const u8, bytes: []const u8, kind: OutputKind) !void {
     if (std.mem.eql(u8, path, "-")) {
         var buffer: [4096]u8 = undefined;
         var writer = std.Io.File.stdout().writer(io, &buffer);
@@ -711,7 +771,12 @@ fn write_output_atomically(allocator: std.mem.Allocator, io: std.Io, path: []con
     const temporary = try std.fmt.allocPrint(allocator, "{s}.tmp.{d}", .{ path, std.c.getpid() });
     defer allocator.free(temporary);
     errdefer std.Io.Dir.cwd().deleteFile(io, temporary) catch {};
-    var file = try std.Io.Dir.cwd().createFile(io, temporary, .{ .truncate = true });
+    // 含明文的 Manifest 仅属主可读；生成源码和 Blob 不含明文，沿用默认权限。
+    const permissions: std.Io.File.Permissions = if (kind == .private and @hasDecl(std.Io.File.Permissions, "fromMode"))
+        std.Io.File.Permissions.fromMode(0o600)
+    else
+        .default_file;
+    var file = try std.Io.Dir.cwd().createFile(io, temporary, .{ .truncate = true, .permissions = permissions });
     defer file.close(io);
     var buffer: [4096]u8 = undefined;
     var writer = file.writer(io, &buffer);
@@ -721,8 +786,24 @@ fn write_output_atomically(allocator: std.mem.Allocator, io: std.Io, path: []con
     try std.Io.Dir.cwd().rename(temporary, std.Io.Dir.cwd(), path, io);
 }
 
-test "argument parser accepts stdin and explicit crypto cli" {
-    _ = Arguments{ .manifest_path = "-", .output_path = "out", .crypto_cli_path = "crypto" };
+test "scan arguments reject empty, oversized namespaces and unknown languages" {
+    const base = [_][]const u8{ "--input", "a", "--output", "b", "--manifest", "c" };
+    const ok = try parse_scan_arguments(&(base ++ [_][]const u8{ "--language", "swift", "--namespace", "com.example" }));
+    try std.testing.expectEqualStrings("com.example", ok.namespace);
+    try std.testing.expectError(error.InvalidScanArguments, parse_scan_arguments(&(base ++ [_][]const u8{ "--language", "swift", "--namespace", "" })));
+    const too_long = try std.testing.allocator.alloc(u8, max_namespace_size + 1);
+    defer std.testing.allocator.free(too_long);
+    @memset(too_long, 'n');
+    try std.testing.expectError(error.InvalidScanArguments, parse_scan_arguments(&(base ++ [_][]const u8{ "--language", "swift", "--namespace", too_long })));
+    try std.testing.expectError(error.InvalidScanArguments, parse_scan_arguments(&(base ++ [_][]const u8{ "--language", "rust", "--namespace", "x" })));
+}
+
+const test_key: [32]u8 = @splat(0x11);
+
+test "string ids match the Rust known answers" {
+    try std.testing.expectEqual(@as(u64, 0x26e86c4a43c0723d), try string_id(std.testing.allocator, &test_key, "com.example.scanner", "secret"));
+    try std.testing.expectEqual(@as(u64, 0x4604befa00d3c591), try string_id(std.testing.allocator, &test_key, "com.example.scanner", ""));
+    try std.testing.expectEqual(@as(u64, 0x52a6556487d812ea), catalog_string_id("/v1/token"));
 }
 
 test "scanner rewrites only supported Swift literals" {
@@ -732,7 +813,7 @@ test "scanner rewrites only supported Swift literals" {
     defer std.testing.allocator.free(literal.text);
     try std.testing.expectEqualStrings("hello\nworld", literal.text);
     try std.testing.expectEqual(source.len - " // ZDString(\"ignored\")".len, literal.end);
-    try std.testing.expectEqual(@as(u64, 0x212179d7f8f84a82), string_id("com.example.test", "https://api.example.com/v1/user"));
+    try std.testing.expectEqual(@as(u64, 0x4761ebd2d25d8206), try string_id(std.testing.allocator, &test_key, "com.example.test", "https://api.example.com/v1/user"));
 }
 
 test "scanner supports Objective-C literals" {

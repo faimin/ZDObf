@@ -32,6 +32,15 @@ class CatalogCodegenTests(unittest.TestCase):
             self.assertNotIn(value, generated["objc"])
             self.assertNotIn(value, generated["swift"])
 
+    def test_reserved_identifiers_are_rejected(self):
+        # 关键字或会覆盖 NSObject 类方法的名字生成出来无法编译/行为异常，必须提前拒绝。
+        module = load_codegen_module()
+        for identifier in ("class", "init", "description", "new", "let"):
+            with self.subTest(identifier=identifier):
+                with self.assertRaises(ValueError):
+                    module.render_catalog({identifier: "/v1/path"})
+        module.render_catalog({"classPath": "/v1/path"})
+
 
 if __name__ == "__main__":
     unittest.main()

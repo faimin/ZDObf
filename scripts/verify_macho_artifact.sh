@@ -19,6 +19,11 @@ while [ "$#" -gt 0 ]; do
             ;;
         --forbid)
             [ "$#" -ge 2 ] || exit 64
+            # 空串会匹配任何内容，必然误报。
+            if [ -z "$2" ]; then
+                printf '%s\n' "--forbid value must not be empty" >&2
+                exit 64
+            fi
             printf '%s\n' "$2" >> "$forbidden_file"
             shift 2
             ;;

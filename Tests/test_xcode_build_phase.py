@@ -52,6 +52,7 @@ class XcodeBuildPhaseTests(unittest.TestCase):
             section = temporary_path / "section.o"
             environment = {
                 **os.environ,
+                "ZD_STRING_RUNTIME_KEY_B64": "ERERERERERERERERERERERERERERERERERERERERERE=",
                 "ZD_STRING_CATALOG_MAPPING": str(mapping),
                 "ZD_STRING_NAMESPACE": "com.example.catalog",
                 # 故意传入无关 App 根目录，确保脚本从自身目录寻找默认扫描器。
@@ -75,10 +76,25 @@ class XcodeBuildPhaseTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue((derived / "strings.manifest.json").is_file())
+            # 含明文的 Manifest 默认不得残留在构建目录。
+            self.assertFalse((derived / "strings.manifest.json").exists())
+            self.assertFalse((derived / "manifests").exists())
             self.assertEqual((derived / "strings.zdstr").read_bytes(), b"blob")
             self.assertEqual(section.read_bytes(), b"object")
             self.assertEqual(Path(str(section) + ".arch").read_text(), "arm64 x86_64")
+
+            # 显式开启调试开关时才保留 Manifest。
+            keep_result = subprocess.run(
+                [str(SCRIPT)],
+                cwd=ROOT,
+                env={**environment, "ZD_STRING_KEEP_MANIFESTS": "1"},
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(keep_result.returncode, 0, keep_result.stderr)
+            self.assertTrue((derived / "strings.manifest.json").is_file())
+            shutil.rmtree(derived / "manifests")
+            (derived / "strings.manifest.json").unlink()
 
             source_map = temporary_path / "source-map.txt"
             generated_source = temporary_path / "generated.swift"

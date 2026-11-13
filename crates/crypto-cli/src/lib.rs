@@ -1,6 +1,6 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
-use zd_string_crypto_core::{NonceMode, RuntimeError, StringEntry, build_blob};
 use serde::Deserialize;
+use zd_string_crypto_core::{NonceMode, RuntimeError, StringEntry, build_blob};
 
 // Host CLI 将 JSON Manifest 限定为构建期输入，最终只输出加密 Blob。
 
@@ -161,7 +161,7 @@ mod tests {
 
         let parsed = parse_manifest(manifest).expect("manifest should parse");
         assert_eq!(
-            parsed.entries[0].id(b"ignored-namespace"),
+            parsed.entries[0].id(&[0u8; 32], b"ignored-namespace"),
             0x0123_4567_89ab_cdef
         );
     }

@@ -1,9 +1,9 @@
-use zd_string_crypto_core::{ParsedBlob, RuntimeError, decrypt_by_id, parse_blob};
 use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use std::sync::OnceLock;
+use zd_string_crypto_core::{ParsedBlob, RuntimeError, decrypt_by_id, parse_blob};
 use zeroize::{Zeroize, Zeroizing};
 
 // C ABI 只负责校验与生命周期管理，密码学和 Blob 解析全部复用共享核心。
@@ -49,6 +49,8 @@ pub extern "C" fn zd_string_runtime_init(
             || blob_length == 0
             || (key.is_null() && key_length != 0)
             || key_length != 32
+            // slice::from_raw_parts 要求长度不超过 isize::MAX，否则是未定义行为。
+            || blob_length > isize::MAX as usize
         {
             return ZD_STRING_ERROR_INVALID_ARGUMENT;
         }
@@ -203,9 +205,10 @@ fn map_error(error: RuntimeError) -> u32 {
         RuntimeError::InvalidUtf8 => ZD_STRING_ERROR_INVALID_UTF8,
         RuntimeError::UnknownId => ZD_STRING_ERROR_INVALID_ID,
         RuntimeError::AuthenticationFailed => ZD_STRING_ERROR_AUTHENTICATION_FAILED,
-        RuntimeError::MalformedBlob | RuntimeError::RandomSourceUnavailable => {
-            ZD_STRING_ERROR_MALFORMED_BLOB
-        }
+        RuntimeError::MalformedBlob
+        | RuntimeError::EmptyCatalog
+        | RuntimeError::IdCollision
+        | RuntimeError::RandomSourceUnavailable => ZD_STRING_ERROR_MALFORMED_BLOB,
     }
 }
 
@@ -213,8 +216,8 @@ fn map_error(error: RuntimeError) -> u32 {
 mod tests {
     // Runtime 测试通过真实 C ABI 检查 callback 与显式释放路径。
     use super::*;
-    use zd_string_crypto_core::{NonceMode, StringEntry, build_blob};
     use std::ffi::c_void;
+    use zd_string_crypto_core::{NonceMode, StringEntry, build_blob};
 
     static KEY: [u8; 32] = [0x31; 32];
     static SALT: [u8; 32] = [0x41; 32];
@@ -236,7 +239,7 @@ mod tests {
             StringEntry::new("second-value"),
         ];
         let blob = build_blob(&KEY, NAMESPACE, &SALT, &entries, NonceMode::Deterministic).unwrap();
-        let id = entries[0].id(NAMESPACE);
+        let id = entries[0].id(&KEY, NAMESPACE);
         let wrong_key = [0x32; 32];
         assert_eq!(
             zd_string_runtime_init(
@@ -272,5 +275,35 @@ mod tests {
         assert_eq!(copied, b"runtime-value");
         zd_string_result_free(&mut result);
         assert!(result.bytes.is_null());
+    }
+    #[test]
+    fn init_rejects_invalid_arguments_before_touching_state() {
+        let key = [0x31u8; 32];
+        let blob = [0u8; 8];
+        assert_eq!(
+            zd_string_runtime_init(std::ptr::null(), 8, key.as_ptr(), key.len()),
+            ZD_STRING_ERROR_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            zd_string_runtime_init(blob.as_ptr(), 0, key.as_ptr(), key.len()),
+            ZD_STRING_ERROR_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            zd_string_runtime_init(blob.as_ptr(), blob.len(), std::ptr::null(), 32),
+            ZD_STRING_ERROR_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            zd_string_runtime_init(blob.as_ptr(), blob.len(), key.as_ptr(), 31),
+            ZD_STRING_ERROR_INVALID_ARGUMENT
+        );
+        // 结构非法的 Blob 返回 malformed，而不是 panic 越过 FFI 边界。
+        assert_eq!(
+            zd_string_runtime_init(blob.as_ptr(), blob.len(), key.as_ptr(), key.len()),
+            ZD_STRING_ERROR_MALFORMED_BLOB
+        );
+        assert_eq!(
+            zd_string_with_utf8(1, None, std::ptr::null_mut()),
+            ZD_STRING_ERROR_INVALID_ARGUMENT
+        );
     }
 }

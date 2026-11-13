@@ -24,7 +24,9 @@ pub const MAX_STRING_LEN: usize = 1024 * 1024;
 pub const MAX_NAMESPACE_LEN: usize = 256;
 
 const FLAG_RANDOM_NONCE: u32 = 1;
-const ID_DOMAIN: &[u8] = b"LMStringProtection/id/v1";
+// 扫描产生的 ID 由构建 key 经 HKDF 派生，没有 key 就无法离线验证对明文的猜测。
+// 目录兼容 ID（CATALOG_ID_DOMAIN）在 Pod 编译期固化，无法携带 key，仍是无密钥哈希。
+const ID_SALT: &[u8] = b"LMStringProtection/id/v2";
 const CATALOG_ID_DOMAIN: &[u8] = b"LMStringProtection/catalog-id/v1";
 const KEY_DOMAIN: &[u8] = b"LMStringProtection/key/v1";
 const NONCE_DOMAIN: &[u8] = b"LMStringProtection/nonce/v1";
@@ -71,9 +73,9 @@ impl StringEntry {
         &self.bytes
     }
 
-    pub fn id(&self, namespace: &[u8]) -> u64 {
+    pub fn id(&self, key: &[u8], namespace: &[u8]) -> u64 {
         self.explicit_id
-            .unwrap_or_else(|| string_id(namespace, &self.bytes))
+            .unwrap_or_else(|| string_id(key, namespace, &self.bytes))
     }
 }
 
@@ -102,6 +104,10 @@ pub enum RuntimeError {
     BlobTooLarge,
     #[error("malformed blob")]
     MalformedBlob,
+    #[error("empty catalog: at least one string is required")]
+    EmptyCatalog,
+    #[error("string id collision between different strings")]
+    IdCollision,
     #[error("unknown string id")]
     UnknownId,
     #[error("authentication failed")]
@@ -131,14 +137,17 @@ impl ParsedBlob {
     }
 }
 
-pub fn string_id(namespace: &[u8], bytes: &[u8]) -> u64 {
-    let mut hasher = Sha256::new();
-    hasher.update(ID_DOMAIN);
-    hasher.update((namespace.len() as u16).to_le_bytes());
-    hasher.update(namespace);
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    u64::from_le_bytes(digest[..8].try_into().expect("digest has eight bytes"))
+pub fn string_id(key: &[u8], namespace: &[u8], bytes: &[u8]) -> u64 {
+    // ID = HKDF-SHA256(salt = ID_SALT, ikm = key).expand(len(namespace) as u16 LE || namespace || 明文, 8 字节)。
+    let hkdf = Hkdf::<Sha256>::new(Some(ID_SALT), key);
+    let mut info = Vec::with_capacity(2 + namespace.len() + bytes.len());
+    info.extend_from_slice(&(namespace.len() as u16).to_le_bytes());
+    info.extend_from_slice(namespace);
+    info.extend_from_slice(bytes);
+    let mut output = [0u8; 8];
+    hkdf.expand(&info, &mut output)
+        .expect("8 bytes is a valid HKDF-SHA256 output length");
+    u64::from_le_bytes(output)
 }
 
 pub fn catalog_string_id(bytes: &[u8]) -> u64 {
@@ -173,10 +182,10 @@ pub fn build_blob(
             return Err(RuntimeError::InvalidStringLength);
         }
         std::str::from_utf8(&entry.bytes).map_err(|_| RuntimeError::InvalidUtf8)?;
-        let id = entry.id(namespace);
+        let id = entry.id(key, namespace);
         if let Some(previous) = unique.get(&id) {
             if previous != &entry.bytes {
-                return Err(RuntimeError::MalformedBlob);
+                return Err(RuntimeError::IdCollision);
             }
         } else {
             unique.insert(id, entry.bytes.clone());
@@ -185,7 +194,7 @@ pub fn build_blob(
 
     // 空目录没有 AEAD 标签可验证；空字符串记录仍然合法且带有认证标签。
     if unique.is_empty() {
-        return Err(RuntimeError::MalformedBlob);
+        return Err(RuntimeError::EmptyCatalog);
     }
     let mut salt_hasher = Sha256::new();
     salt_hasher.update(BUILD_SALT_DOMAIN);

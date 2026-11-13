@@ -10,7 +10,7 @@ Pod::Spec.new do |spec|
   spec.license          = 'MIT'
   spec.author           = 'Zero.D.Saber'
   spec.homepage         = 'https://github.com/faimin/ZDObf'
-  spec.source           = { :git => 'https://github.com/faimin/ZDObf.git', :tag => spec.version.to_s }
+  spec.source           = { :git => 'https://github.com/faimin/ZDObf.git', :tag => "v#{spec.version}" }
 
   spec.ios.deployment_target = '15.0'
   spec.osx.deployment_target = '15.0'

@@ -408,8 +408,6 @@ fn skip_source_string(source: []const u8, start: usize, swift: bool, depth: usiz
     if (quote_start >= source.len) return null;
     const quote = source[quote_start];
     if (quote != '"' and !(quote == '\'' and !swift)) return null;
-    // 预处理行（#pragma mark - User's info、#error 等）里的 ' 只是普通文本，不是字符常量。
-    if (quote == '\'' and is_in_preprocessor_line(source, start)) return null;
     if (depth >= 128) return error.UnsupportedLiteral;
     const hashes = quote_start - start;
     const quotes: usize = if (swift and std.mem.startsWith(u8, source[quote_start..], "\"\"\"")) 3 else 1;
@@ -435,15 +433,6 @@ fn skip_source_string(source: []const u8, start: usize, swift: bool, depth: usiz
         }
     }
     return error.UnsupportedLiteral;
-}
-
-fn is_in_preprocessor_line(source: []const u8, position: usize) bool {
-    // 向前回溯到行首：首个非空白字符是 # 即视为预处理指令行。
-    var line_start = position;
-    while (line_start > 0 and source[line_start - 1] != '\n' and source[line_start - 1] != '\r') : (line_start -= 1) {}
-    var index = line_start;
-    while (index < position and (source[index] == ' ' or source[index] == '\t')) : (index += 1) {}
-    return index < position and source[index] == '#';
 }
 
 fn matches_hashes(source: []const u8, start: usize, count: usize) bool {

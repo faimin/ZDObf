@@ -196,6 +196,9 @@ class GeneratorTests(unittest.TestCase):
             "  #  warning don't ship\n",
             "int n = 1'000;\n",
             "// it's a comment\n",
+            # 预处理行里合法的字符常量（含引号）仍要按字符常量处理，不能把 " 当成字符串起点。
+            "#define kQuote '\"'\n",
+            "#define kA 'a' // it's\n",
         ]
         for prefix in cases:
             with self.subTest(prefix=prefix):

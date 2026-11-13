@@ -27,7 +27,22 @@ export XROS_DEPLOYMENT_TARGET=1.0
 # 产物不应带构建机的绝对路径（用户名、CARGO_HOME、工具链位置），统一映射成固定前缀。
 CARGO_HOME_DIR=${CARGO_HOME:-"$HOME/.cargo"}
 RUSTUP_HOME_DIR=${RUSTUP_HOME:-"$HOME/.rustup"}
-export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$ROOT_DIR=/zdobf --remap-path-prefix=$CARGO_HOME_DIR=/cargo --remap-path-prefix=$RUSTUP_HOME_DIR=/rustup"
+# 用 CARGO_ENCODED_RUSTFLAGS（0x1f 分隔）传参，路径含空格时不会被按空白拆开。
+# 它优先于 RUSTFLAGS，所以把调用方已有的 RUSTFLAGS 一并带上（这部分仍按空白拆分）。
+unit_separator=$(printf '\037')
+encoded_flags=""
+for flag in ${RUSTFLAGS:-}; do
+    encoded_flags="${encoded_flags:+$encoded_flags$unit_separator}$flag"
+done
+for flag in \
+    "--remap-path-prefix=$ROOT_DIR=/zdobf" \
+    "--remap-path-prefix=$CARGO_HOME_DIR=/cargo" \
+    "--remap-path-prefix=$RUSTUP_HOME_DIR=/rustup"
+do
+    encoded_flags="${encoded_flags:+$encoded_flags$unit_separator}$flag"
+done
+export CARGO_ENCODED_RUSTFLAGS="$encoded_flags"
+unset RUSTFLAGS
 
 # Rust 1.99 stable 提供这些 Apple targets；rustup 对已安装 target 是幂等的。
 rustup target add \

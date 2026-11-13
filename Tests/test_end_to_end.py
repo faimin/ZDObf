@@ -106,24 +106,42 @@ class EndToEndTests(unittest.TestCase):
                 str(ROOT / "Apple/ObjectiveC/ZDObf.mm"), str(runtime),
                 "-install_name", "@rpath/libzdobf.dylib", "-o", str(dylib),
             ])
-            app = temporary / "app"
+            section_object = str(derived / "zdstring-section.o")
+            rpath = ["-L", str(temporary), "-lzdobf", "-Wl,-rpath,@loader_path"]
+            apps = {}
+            # 布局一：section 随业务代码链接进主可执行文件。
+            executable = temporary / "app-executable"
             self.run_checked(common + [
                 "-I", str(ROOT / "Apple/ObjectiveC"), "-framework", "Foundation",
-                str(main), str(generated), str(derived / "zdstring-section.o"),
-                "-L", str(temporary), "-lzdobf", "-Wl,-rpath,@loader_path",
-                "-o", str(app),
+                str(main), str(generated), section_object, *rpath, "-o", str(executable),
             ])
+            apps["executable"] = executable
+            # 布局二：模拟 Xcode 的 ENABLE_DEBUG_DYLIB，主可执行文件只是壳，section 在 debug dylib 里。
+            debug_dylib = temporary / "libapp.debug.dylib"
+            self.run_checked(common + [
+                "-dynamiclib", "-I", str(ROOT / "Apple/ObjectiveC"), "-framework", "Foundation",
+                str(generated), section_object, *rpath,
+                "-install_name", "@rpath/libapp.debug.dylib", "-o", str(debug_dylib),
+            ])
+            stub = temporary / "app-stub"
+            self.run_checked(common + [
+                "-I", str(ROOT / "Apple/ObjectiveC"), "-framework", "Foundation",
+                str(main), "-lapp.debug", *rpath, "-o", str(stub),
+            ])
+            apps["debug-dylib"] = stub
 
             # 明文既不在源码、也不在最终二进制里。
-            self.assertNotIn(SECRET.encode(), app.read_bytes())
-            self.assertNotIn(SECRET.encode(), dylib.read_bytes())
+            for binary in (*apps.values(), dylib, debug_dylib):
+                self.assertNotIn(SECRET.encode(), binary.read_bytes())
 
-            result = self.run_checked([str(app)])
-            self.assertEqual(result.stdout.strip(), SECRET)
+            for layout, app in apps.items():
+                with self.subTest(layout=layout):
+                    result = self.run_checked([str(app)])
+                    self.assertEqual(result.stdout.strip(), SECRET)
 
-            wrong = subprocess.run([str(app), "wrong-key"], capture_output=True, text=True)
-            self.assertEqual(wrong.returncode, 3)
-            self.assertIn("init-failed", wrong.stdout)
+                    wrong = subprocess.run([str(app), "wrong-key"], capture_output=True, text=True)
+                    self.assertEqual(wrong.returncode, 3)
+                    self.assertIn("init-failed", wrong.stdout)
 
 
 if __name__ == "__main__":

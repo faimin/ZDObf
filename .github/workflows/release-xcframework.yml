@@ -1,29 +1,62 @@
 name: Build and release ZDObfRuntime XCFramework
 
+# 手动触发。publish=false 只构建并上传 Actions artifact；publish=true 会：
+# 构建 → 把 Package.swift 固定到本次资产、同步 podspec 版本 → 提交到 main → 创建 vX.Y.Z Release 并上传资产。
+# 固定值提交先于 tag，所以 vX.Y.Z 的 Package.swift 指向它自己的 Runtime。
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v, e.g. 0.1.1"
+        required: true
+        type: string
+      publish:
+        description: "Commit the pin to main and create the GitHub Release"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: macos-26
     steps:
+      - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          case "$VERSION" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Invalid version: $VERSION" >&2; exit 1 ;;
+          esac
+          if [ "$PUBLISH" = "true" ] && [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Publishing is only allowed from main (got $GITHUB_REF)" >&2
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Ensure the tag does not exist yet
+        if: ${{ inputs.publish }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "Tag v$VERSION already exists" >&2
+            exit 1
+          fi
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build all Apple platform slices
         run: ./scripts/build_xcframework.sh
-
-      - name: Validate Swift Package Manager integration
-        run: swift build
 
       - name: Package XCFramework
         run: |
@@ -33,16 +66,22 @@ jobs:
           shasum -a 256 dist/ZDObfRuntime.xcframework.zip \
             > dist/ZDObfRuntime.xcframework.zip.sha256
 
-      - name: Show pin instructions
+      - name: Pin Package.swift and podspec to this release
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          checksum=$(swift package compute-checksum dist/ZDObfRuntime.xcframework.zip)
+          sh scripts/pin_runtime_release.sh "$VERSION" dist/ZDObfRuntime.xcframework.zip
+          sed -i '' "s/^  spec.version  *= '.*'$/  spec.version          = '$VERSION'/" ZDObf.podspec
+          grep -n "spec.version " ZDObf.podspec
           {
             echo "### ZDObfRuntime.xcframework.zip"
             echo ""
-            echo "- sha256: \`$checksum\`"
-            echo "- 发布后固定: \`scripts/pin_runtime_release.sh $version dist/ZDObfRuntime.xcframework.zip\`"
+            echo "- version: \`$VERSION\`"
+            echo "- sha256: \`$(swift package compute-checksum dist/ZDObfRuntime.xcframework.zip)\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate Swift Package Manager integration
+        run: swift build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7.0.2
@@ -52,11 +91,29 @@ jobs:
             dist/ZDObfRuntime.xcframework.zip
             dist/ZDObfRuntime.xcframework.zip.sha256
 
-      - name: Upload release assets
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v3.0.3
-        with:
-          files: |
-            dist/ZDObfRuntime.xcframework.zip
-            dist/ZDObfRuntime.xcframework.zip.sha256
-          generate_release_notes: true
+      - name: Commit the pin to main
+        id: commit
+        if: ${{ inputs.publish }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift ZDObf.podspec
+          git commit -m "release: v$VERSION"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub Release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ steps.commit.outputs.sha }}
+        run: |
+          gh release create "v$VERSION" \
+            dist/ZDObfRuntime.xcframework.zip \
+            dist/ZDObfRuntime.xcframework.zip.sha256 \
+            --target "$TARGET" \
+            --title "v$VERSION" \
+            --generate-notes

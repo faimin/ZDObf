@@ -64,16 +64,26 @@ uint32_t zd_string_runtime_init_embedded(const uint8_t *key, size_t keyLength) {
     if (key == NULL || keyLength != 32) {
         return ZD_STRING_ERROR_INVALID_ARGUMENT;
     }
-    // 密文 section 由最终链接注入主可执行文件；dyld 的 0 号镜像即主可执行文件，
-    // 这样 wrapper 位于动态 framework 时也能链接（_mh_execute_header 只存在于可执行文件镜像）。
-    // Rust Runtime 仍只接收字节指针。
-    const ZDMachHeader *header = (const ZDMachHeader *)_dyld_get_image_header(0);
-    if (header == NULL) {
-        return ZD_STRING_ERROR_MALFORMED_BLOB;
-    }
+    // 密文 section 由最终链接注入 App：通常在主可执行文件（dyld 0 号镜像）里；Xcode 的 Debug dylib
+    // （ENABLE_DEBUG_DYLIB）模式下主可执行文件只是壳，section 随业务代码落在 App.debug.dylib 中。
+    // 因此从 0 号镜像开始按加载顺序查找第一个带 __DATA,__zdstring 的镜像。
+    // 不用 _mh_execute_header：它只存在于可执行文件镜像，wrapper 位于动态 framework 时无法链接。
+    // 即使别的镜像带有同名 section，没有构建 key 也无法通过认证，最坏只会初始化失败。
     unsigned long sectionLength = 0;
-    const uint8_t *section = getsectiondata(header, "__DATA", "__zdstring", &sectionLength);
-    if (section == NULL || sectionLength == 0) {
+    const uint8_t *section = NULL;
+    const uint32_t imageCount = _dyld_image_count();
+    for (uint32_t index = 0; index < imageCount; index++) {
+        const ZDMachHeader *header = (const ZDMachHeader *)_dyld_get_image_header(index);
+        if (header == NULL) {
+            continue;
+        }
+        section = getsectiondata(header, "__DATA", "__zdstring", &sectionLength);
+        if (section != NULL && sectionLength != 0) {
+            break;
+        }
+        section = NULL;
+    }
+    if (section == NULL) {
         return ZD_STRING_ERROR_MALFORMED_BLOB;
     }
     return zd_string_runtime_init(section, (size_t)sectionLength, key, keyLength);

@@ -71,7 +71,15 @@ public func ZDStringDecodeBytes(_ bytes: [UInt8]) -> String? {
     for (index, byte) in bytes.enumerated() {
         stringID |= UInt64(byte) << UInt64(index * 8)
     }
-    return try? ZDObf.string(for: stringID)
+    do {
+        return try ZDObf.string(for: stringID)
+    } catch {
+        #if DEBUG
+        // 未初始化或 key/Blob 不匹配时静默返回 nil 很难排查；仅 Debug 构建输出错误（不含明文）。
+        NSLog("[ZDObf] decode failed for string id 0x%llx: %@", stringID, String(describing: error))
+        #endif
+        return nil
+    }
 }
 
 @_silgen_name("zd_string_runtime_init")

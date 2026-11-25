@@ -70,7 +70,10 @@ jobs:
           print('Swift Package Manager manifest is valid')
           PY
           swift build
-          swift test
+          # CI 的 SwiftPM 会把所有测试 target 打进同一个 xctest 进程，而 Runtime 是进程级单例，
+          # 初始化后无法回退，所以两个 target 必须分开执行，各自拥有干净的进程。
+          swift test --filter '^ZDObfKitTests\.'
+          swift test --filter '^ZDObfObjCTests/'
 
       - name: Validate component code
         run: |
